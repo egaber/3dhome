@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.venv/
+*.tsbuildinfo
+src/assets/sheet-words.json
+test-results/
+*.local
+*.pdf
