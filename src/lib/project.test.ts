@@ -1,6 +1,6 @@
 import { Settings } from 'luxon';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BASE_OPENINGS, defaultState, resolvedOpenings, WALLS } from '../model/plans';
+import { BASE_OPENINGS, ROOMS, defaultState, resolvedOpenings, WALLS } from '../model/plans';
 import type { OpeningSpec, SimulationState } from '../model/types';
 import { loadProject, parseProject, PROJECT_STORAGE_KEY, saveProject, serializeProject } from './project';
 import { resolveLocalDateTime } from './solar';
@@ -116,7 +116,7 @@ describe('version-1 persistence and explicit copies', () => {
     state.view = {
       mode: 'walk', cutaway: 'first', planVisible: false, planOpacity: 0, planFloor: 'basement',
       grid: true, labels: true, path: false, dimensions: false, directOnly: true, quality: 'standard',
-      eyeHeight: .75, isolateFloor: 'ground',
+      eyeHeight: .75, isolateFloor: 'ground', renderMode: 'realistic',
     };
     state.reference = { image: PNG, width: 123, depth: 117.5, x: -57, z: 41, rotation: 112, opacity: 0, visible: true };
     state.openings[BASE.id] = { width: 0, height: 0, open: false, shutter: true, label: 'פתח שהוסר' };
@@ -178,6 +178,28 @@ describe('version-1 persistence and explicit copies', () => {
     const minimal = parse({ version: 1 });
     minimal.buildings.south.depth = 7;
     expect(parse({ version: 1 })).toEqual(defaultState());
+  });
+
+  it('round-trips independent 2D wall and room edits used by the 3D model', () => {
+    const state = defaultState();
+    const wall = WALLS[0], room = ROOMS[0];
+    state.design.wallEdits[wall.id] = { a: [1.25, -2.5], b: [7.75, 4.25], deleted: false };
+    state.design.roomEdits[room.id] = { center: [5.5, 3.25], width: 4.75, depth: 3.5, deleted: false };
+    state.view.renderMode = 'realistic';
+    const restored = parseProject(serializeProject(state));
+    expect(restored).toEqual(state);
+    expect(restored.design).not.toBe(state.design);
+    expect(restored.design.wallEdits[wall.id]).not.toBe(state.design.wallEdits[wall.id]);
+    expect(restored.design.roomEdits[room.id]).not.toBe(state.design.roomEdits[room.id]);
+  });
+
+  it('rejects unknown, degenerate and nonfinite design edits before geometry', () => {
+    const state = defaultState();
+    const wall = WALLS[0], room = ROOMS[0];
+    state.design.wallEdits[wall.id] = { a: [1, 1], b: [1.01, 1.01], deleted: false };
+    expectInvalid(() => serializeProject(state), wall.id);
+    expectInvalid(() => parse({ version: 1, design: { wallEdits: { missing: { a: [0, 0], b: [1, 1], deleted: false } } } }), 'missing');
+    expectInvalid(() => parse({ version: 1, design: { roomEdits: { [room.id]: { center: [0, 0], width: 0, depth: 2, deleted: false } } } }), 'width');
   });
 
   it.each([null, [], 'state', 42, true, {}, { version: 0 }, { version: 2 }, { version: '1' }, { version: null }])

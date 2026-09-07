@@ -176,8 +176,8 @@ export function defaultState(): SimulationState {
       { id: 'east', name: 'שכן ממזרח · מיקום משוער', enabled: true, x: 23.35, z: 7.65, width: 9.9, depth: 16.0, height: 9, roofRise: 1.8, rotation: 0 },
     ],
     vehicles: { southZ: 17, northZ: 12.8 },
-    openings: {}, addedOpenings: [],
-    view: { mode: 'orbit', cutaway: 'none', planVisible: true, planOpacity: .32, planFloor: 'ground', grid: false, labels: false, path: true, dimensions: true, directOnly: false, quality: 'high', eyeHeight: 1.62, isolateFloor: 'none' },
+    openings: {}, addedOpenings: [], design: { wallEdits: {}, roomEdits: {} },
+    view: { mode: 'orbit', cutaway: 'none', planVisible: true, planOpacity: .32, planFloor: 'ground', grid: false, labels: false, path: true, dimensions: true, directOnly: false, quality: 'high', eyeHeight: 1.62, isolateFloor: 'none', renderMode: 'model' },
     reference: { image: null, width: 52, depth: 43, x: 3, z: 5, rotation: -14.7, opacity: .65, visible: false },
   };
 }
@@ -196,8 +196,22 @@ export function wallScale(wall: PlanWall, state: SimulationState) {
   const dz = (wall.b[1] - wall.a[1]) * unit.depth / BASE_DEPTH[wall.unit];
   return Math.hypot(dx, dz) / lengthOf(wall.a, wall.b);
 }
+export function resolvedWalls(state: SimulationState): PlanWall[] {
+  return WALLS.flatMap(wall => {
+    const edit = state.design.wallEdits[wall.id];
+    if (edit?.deleted) return [];
+    return [{ ...wall, a: edit ? [...edit.a] : [...wall.a], b: edit ? [...edit.b] : [...wall.b], openings: wall.openings.map(opening => ({ ...opening })) }];
+  });
+}
+export function resolvedRooms(state: SimulationState): Room[] {
+  return ROOMS.flatMap(room => {
+    const edit = state.design.roomEdits[room.id];
+    if (edit?.deleted) return [];
+    return [{ ...room, center: edit ? [...edit.center] : [...room.center], width: edit?.width ?? room.width, depth: edit?.depth ?? room.depth }];
+  });
+}
 export function resolvedOpenings(state: SimulationState): OpeningSpec[] {
-  return WALLS.flatMap(wall => [...wall.openings, ...state.addedOpenings.filter(o => o.wallId === wall.id)].map(base => ({
+  return resolvedWalls(state).flatMap(wall => [...wall.openings, ...state.addedOpenings.filter(o => o.wallId === wall.id)].map(base => ({
     ...base, width: base.source === 'plan' ? base.width * wallScale(wall, state) : base.width, ...state.openings[base.id],
     id: base.id, wallId: base.wallId, unit: base.unit, floor: base.floor, source: base.source,
   })));
@@ -240,7 +254,7 @@ export function floorAreaSchedule(unit: UnitId, state: SimulationState): FloorAr
   const rows: FloorAreaRow[] = (['basement', 'ground', 'first'] as FloorId[]).flatMap(floor => {
     if (floor === 'first' && settings.storeys === 1) return [];
     const gross = areaOf(FOOTPRINTS[floor][unit]) * sx * sz;
-    const wallFootprint = WALLS.filter(wall => wall.unit === unit && wall.floor === floor)
+    const wallFootprint = resolvedWalls(state).filter(wall => wall.unit === unit && wall.floor === floor)
       .reduce((sum, wall) => {
         const length = lengthOf(wall.a, wall.b) * wallScale(wall, state);
         const perpendicularScale = Math.abs(wall.b[0] - wall.a[0]) > Math.abs(wall.b[1] - wall.a[1]) ? sz : sx;

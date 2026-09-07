@@ -1,5 +1,5 @@
-import { BASE_OPENINGS, defaultState, WALLS } from '../model/plans';
-import type { BuildingSettings, NeighborSettings, OpeningSpec, SimulationState } from '../model/types';
+import { BASE_OPENINGS, ROOMS, defaultState, WALLS } from '../model/plans';
+import type { BuildingSettings, NeighborSettings, OpeningSpec, RoomEdit, SimulationState, Vec2, WallEdit } from '../model/types';
 import { resolveLocalDateTime } from './solar';
 
 export const PROJECT_STORAGE_KEY = 'dori-solar-studio-v1';
@@ -100,6 +100,41 @@ function text(value: unknown, path: string): string {
   return value;
 }
 
+function point(value: unknown, path: string): Vec2 {
+  const values = list(value, path, 2);
+  if (values.length !== 2) invalid(path, 'נדרשות בדיוק שתי קואורדינטות X ו־Z.');
+  return [number(values[0], `${path}[0]`, -100, 100), number(values[1], `${path}[1]`, -100, 100)];
+}
+
+function editRecords<T>(value: unknown, path: string, knownIds: Set<string>, parse: (item: unknown, itemPath: string) => T): Record<string, T> {
+  const input = record(value, path);
+  const output: Record<string, T> = {};
+  const keys = Object.getOwnPropertyNames(input);
+  if (keys.length > 500) invalid(path, 'מותרות עד 500 עריכות תכנון.');
+  for (const key of keys) {
+    const id = identifier(key, childPath(path, key));
+    if (!knownIds.has(id)) invalid(childPath(path, key), 'יש לבחור מזהה שקיים בתוכנית המקור.');
+    output[id] = parse(input[id], childPath(path, id));
+  }
+  return output;
+}
+
+function wallEdit(value: unknown, path: string): WallEdit {
+  const input = record(value, path, ['a', 'b', 'deleted']);
+  const a = point(input.a, `${path}.a`), b = point(input.b, `${path}.b`);
+  if (Math.hypot(b[0] - a[0], b[1] - a[1]) < .05) invalid(path, 'יש להגדיר אורך קיר של לפחות 5 ס״מ.');
+  return { a, b, deleted: boolean(input.deleted, `${path}.deleted`) };
+}
+
+function roomEdit(value: unknown, path: string): RoomEdit {
+  const input = record(value, path, ['center', 'width', 'depth', 'deleted']);
+  return {
+    center: point(input.center, `${path}.center`),
+    width: number(input.width, `${path}.width`, .4, 30),
+    depth: number(input.depth, `${path}.depth`, .4, 30),
+    deleted: boolean(input.deleted, `${path}.deleted`),
+  };
+}
 function identifier(value: unknown, path: string): string {
   if (typeof value !== 'string' || value.length > 150
     || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(value) || FORBIDDEN_KEYS.has(value)) {
@@ -253,6 +288,7 @@ function validateProject(value: unknown): SimulationState {
   const view = fields(get('view'), defaults.view, 'view');
   const reference = fields(get('reference'), defaults.reference, 'reference');
   const vehicles = fields(get('vehicles'), defaults.vehicles, 'vehicles');
+  const design = fields(get('design'), defaults.design, 'design');
   const knownOpenings = new Map(BASE_BY_ID);
   const addedOpenings = list(get('addedOpenings'), 'addedOpenings', MAX_ADDED_OPENINGS).map((item, index) => {
     const opening = addedOpening(item, `addedOpenings[${index}]`);
@@ -292,6 +328,10 @@ function validateProject(value: unknown): SimulationState {
       northZ: number(vehicles('northZ'), 'vehicles.northZ', -20, 35),
     },
     openings, addedOpenings,
+    design: {
+      wallEdits: editRecords(design('wallEdits'), 'design.wallEdits', new Set(WALLS.map(wall => wall.id)), wallEdit),
+      roomEdits: editRecords(design('roomEdits'), 'design.roomEdits', new Set(ROOMS.map(room => room.id)), roomEdit),
+    },
     view: {
       mode: choice(view('mode'), 'view.mode', ['orbit', 'plan', 'walk'] as const),
       cutaway: choice(view('cutaway'), 'view.cutaway', ['none', 'basement', 'ground', 'first'] as const),
@@ -306,6 +346,7 @@ function validateProject(value: unknown): SimulationState {
       quality: choice(view('quality'), 'view.quality', ['standard', 'high'] as const),
       eyeHeight: number(view('eyeHeight'), 'view.eyeHeight', 0.5, 2.2),
       isolateFloor: choice(view('isolateFloor'), 'view.isolateFloor', ['none', 'basement', 'ground', 'first', 'roof'] as const),
+      renderMode: choice(view('renderMode'), 'view.renderMode', ['model', 'realistic'] as const),
     },
     reference: {
       image: referenceImage(reference('image')),

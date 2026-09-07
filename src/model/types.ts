@@ -82,6 +82,19 @@ export interface Room {
   kind: 'living' | 'kitchen' | 'dining' | 'bedroom' | 'bath' | 'hall' | 'basement';
 }
 
+export interface WallEdit {
+  a: Vec2;
+  b: Vec2;
+  deleted: boolean;
+}
+
+export interface RoomEdit {
+  center: Vec2;
+  width: number;
+  depth: number;
+  deleted: boolean;
+}
+
 export interface SimulationState {
   version: 1;
   date: string;
@@ -98,6 +111,10 @@ export interface SimulationState {
   };
   openings: Record<string, Partial<OpeningSpec>>;
   addedOpenings: OpeningSpec[];
+  design: {
+    wallEdits: Record<string, WallEdit>;
+    roomEdits: Record<string, RoomEdit>;
+  };
   view: {
     mode: 'orbit' | 'plan' | 'walk';
     cutaway: 'none' | FloorId;
@@ -112,6 +129,7 @@ export interface SimulationState {
     quality: 'standard' | 'high';
     eyeHeight: number;
     isolateFloor: 'none' | FloorId | 'roof';
+    renderMode: 'model' | 'realistic';
   };
   reference: {
     image: string | null;

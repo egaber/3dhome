@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { Compass, Download, RotateCcw, Save, Sun, Upload, X } from 'lucide-react';
+import { Compass, Download, Grid2X2, Move3D, RotateCcw, Save, Sparkles, Sun, Upload, X } from 'lucide-react';
 import Inspector from './components/Inspector';
+import { FloorEditor2D } from './components/FloorEditor2D';
 import { ModelChat, type ChatMessage } from './components/ModelChat';
 import { QuickObjectEditor, type PickedObject } from './components/QuickObjectEditor';
+import { RenderPanel } from './components/RenderPanel';
 import { Button } from './components/ui/button';
 import { calculateSolar, getSunPath } from './lib/solar';
 import { loadProject, parseProject, saveProject, serializeProject } from './lib/project';
@@ -159,18 +161,42 @@ function applyModelCommand(command: string, state: SimulationState, currentUnit:
   return { state, message: 'לא זיהיתי שינוי. אפשר לבקש גובה קומה/שכן, רוחב או עומק מבנה, הוספת חלון, או לבחור פתח ולשנות סוג, רוחב, גובה, אדן, תריס וגגון.', selectedOpening };
 }
 
-function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCamera, onCameraChange }: {
+function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCamera, onCameraChange, canvasRef, walkVector }: {
   state: SimulationState;
   selectedRoom: string;
   onSelectOpening: (id: string) => void;
   onPickObject: (object: PickedObject) => void;
   restoredCamera: CameraBookmark | null;
   onCameraChange: (camera: CameraBookmark) => void;
+  canvasRef: { current: HTMLCanvasElement | null };
+  walkVector: { forward: number; strafe: number };
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<Runtime | null>(null);
   const skipInitialViewReset = useRef(!!restoredCamera);
   const [runtimeReady, setRuntimeReady] = useState(0);
+  const walkVectorRef = useRef(walkVector);
+  const walkModeRef = useRef(state.view.mode === 'walk');
+  const walkKeys = useRef(new Set<string>());
+  useEffect(() => { walkVectorRef.current = walkVector; }, [walkVector]);
+  useEffect(() => { walkModeRef.current = state.view.mode === 'walk'; }, [state.view.mode]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime || state.view.mode !== 'walk' || (!walkVector.forward && !walkVector.strafe)) return;
+    const forward = runtime.controls.target.clone().sub(runtime.camera.position); forward.y = 0; forward.normalize();
+    const right = new THREE.Vector3(-forward.z, 0, forward.x);
+    const motion = forward.multiplyScalar(walkVector.forward).add(right.multiplyScalar(walkVector.strafe)).normalize().multiplyScalar(.42);
+    const ray = new THREE.Raycaster(runtime.camera.position, motion.clone().normalize(), .08, motion.length() + .28);
+    const blocked = runtime.architecture ? ray.intersectObjects(runtime.architecture.blockers, false).some(hit => {
+      const role = hit.object.userData.role as string | undefined;
+      return role === 'wall' || role === 'boundary-wall' || role === 'neighbor' || role === 'roof-room';
+    }) : false;
+    if (!blocked) {
+      runtime.camera.position.add(motion); runtime.controls.target.add(motion); runtime.controls.update();
+      onCameraChange({ position: runtime.camera.position.toArray(), target: runtime.controls.target.toArray(), up: runtime.camera.up.toArray() });
+    }
+  }, [onCameraChange, state.view.mode, walkVector]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -178,11 +204,12 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(48, 1, 0.05, 500);
     camera.position.set(29, 25, 32);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: true });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    canvasRef.current = renderer.domElement;
     host.appendChild(renderer.domElement);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(6, 3, 6);
@@ -234,8 +261,34 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
     observer.observe(host);
     resize();
     let frame = 0;
+    let previous = performance.now();
+    const keyDown = (event: KeyboardEvent) => { if ('wasd'.includes(event.key.toLowerCase())) walkKeys.current.add(event.key.toLowerCase()); };
+    const keyUp = (event: KeyboardEvent) => walkKeys.current.delete(event.key.toLowerCase());
+    window.addEventListener('keydown', keyDown); window.addEventListener('keyup', keyUp);
     const render = () => {
       frame = requestAnimationFrame(render);
+      const now = performance.now();
+      const delta = Math.min(.05, (now - previous) / 1000); previous = now;
+      if (walkModeRef.current) {
+        const input = walkVectorRef.current;
+        const forwardInput = input.forward + (walkKeys.current.has('w') ? 1 : 0) - (walkKeys.current.has('s') ? 1 : 0);
+        const strafeInput = input.strafe + (walkKeys.current.has('d') ? 1 : 0) - (walkKeys.current.has('a') ? 1 : 0);
+        if (forwardInput || strafeInput) {
+          const forward = runtime.controls.target.clone().sub(runtime.camera.position); forward.y = 0; forward.normalize();
+          const right = new THREE.Vector3(-forward.z, 0, forward.x);
+          const motion = forward.multiplyScalar(forwardInput).add(right.multiplyScalar(strafeInput)).normalize().multiplyScalar(2.3 * delta);
+          const collisionRay = new THREE.Raycaster(runtime.camera.position, motion.clone().normalize(), .08, motion.length() + .32);
+          const blocked = runtime.architecture
+            ? collisionRay.intersectObjects(runtime.architecture.blockers, false).length > 0
+            : false;
+          const nextX = runtime.camera.position.x + motion.x;
+          const nextZ = runtime.camera.position.z + motion.z;
+          if (!blocked && nextX > -8 && nextX < 24 && nextZ > -18 && nextZ < 28) {
+            runtime.camera.position.add(motion); runtime.controls.target.add(motion);
+            rememberCamera();
+          }
+        }
+      }
       controls.update();
       // Keep a neighboring mass from blocking the relevant model when the
       // camera passes through or behind it. Restore all neighbors first.
@@ -261,6 +314,7 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
     render();
     return () => {
       cancelAnimationFrame(frame);
+      window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp);
       observer.disconnect();
       window.clearTimeout(cameraSaveTimer);
       controls.removeEventListener('change', rememberCamera);
@@ -268,6 +322,7 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
       if (runtime.architecture) disposeArchitecture(runtime.architecture);
       renderer.dispose();
       renderer.domElement.remove();
+      canvasRef.current = null;
       runtimeRef.current = null;
     };
   }, []);
@@ -288,6 +343,8 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
       runtime.content.clear();
       const palette = readPalette();
       runtime.scene.background = new THREE.Color(palette.background);
+      runtime.renderer.toneMapping = state.view.renderMode === 'realistic' ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+      runtime.renderer.toneMappingExposure = state.view.renderMode === 'realistic' ? 1.12 : 1;
       const architecture = buildArchitecture(state, palette);
       runtime.architecture = architecture;
       runtime.content.add(architecture.group);
@@ -621,8 +678,12 @@ export default function App() {
   const [daily, setDaily] = useState<DailyExposure | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [sources, setSources] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [renderOpen, setRenderOpen] = useState(false);
+  const [walkVector, setWalkVector] = useState({ forward: 0, strafe: 0 });
   const [notice, setNotice] = useState('גרסת משחק ראשונית · כל המידות ניתנות לשינוי');
   const importRef = useRef<HTMLInputElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => { saveProject(state); }, [state]);
   useEffect(() => {
@@ -701,6 +762,8 @@ export default function App() {
       <div className="brand"><span className="brand-icon"><Sun size={20} /></span><div><strong>דורי 50</strong><small>סטודיו שמש וצל · רעננה</small></div></div>
       <div className="solar-pill"><Compass size={16} /><bdi>{currentSolar ? `${currentSolar.localTimeLabel} · ${currentSolar.altitude.toFixed(1)}°` : 'זמן לא תקין'}</bdi></div>
       <div className="toolbar">
+        <Button size="sm" variant="ghost" onClick={() => setEditorOpen(true)}><Grid2X2 size={15} /> עורך 2D</Button>
+        <Button size="sm" variant="ghost" onClick={() => setRenderOpen(true)}><Sparkles size={15} /> הדמיה AI</Button>
         <Button size="sm" variant="ghost" onClick={() => { if (saveProject(state)) setNotice('הפרויקט נשמר בדפדפן'); }}><Save size={15} /> שמירה</Button>
         <Button size="sm" variant="ghost" onClick={exportWorkspace}><Download size={15} /> שמירת קובץ</Button>
         <Button size="sm" variant="ghost" onClick={() => importRef.current?.click()}><Upload size={15} /> ייבוא</Button>
@@ -731,14 +794,37 @@ export default function App() {
       <div className="stage">
         <Viewer state={state} selectedRoom={selectedRoom} onSelectOpening={id => setSelectedOpening(id)}
           onPickObject={object => { setPicked(object); if (object.unit) setSelectedUnit(object.unit); }}
-          restoredCamera={cameraRestore} onCameraChange={setCamera} />
+          restoredCamera={cameraRestore} onCameraChange={setCamera} canvasRef={canvasRef} walkVector={walkVector} />
         <div className="view-modes" role="group" aria-label="מצב תצוגה">
           {([['orbit', 'סיבוב'], ['plan', 'מבט על'], ['walk', 'סיור בחדר']] as const).map(([mode, label]) => <Button key={mode} size="sm" variant={state.view.mode === mode ? 'primary' : 'secondary'} onClick={() => {
             if (mode === 'orbit') setCameraRestore({ position: [29, 25, 32], target: [6, 3, 6], up: [0, 1, 0] });
             else if (mode === 'plan') setCameraRestore({ position: [6, 48, 6], target: [6, 0, 6], up: [0, 0, -1] });
+            else {
+              const room = ROOMS.find(item => item.id === selectedRoom);
+              if (room) {
+                const point = trueWorldPoint(planPoint(room.center, room.unit, state), state);
+                const elevation = floorElevation(room.floor, state.buildings[room.unit]);
+                setCameraRestore({
+                  position: [point[0], elevation + state.view.eyeHeight, point[1]],
+                  target: [point[0] + 2, elevation + Math.max(.4, state.view.eyeHeight - .17), point[1]],
+                  up: [0, 1, 0],
+                });
+              }
+            }
             setState(current => ({ ...current, view: { ...current.view, mode } }));
           }}>{label}</Button>)}
         </div>
+        <div className="render-modes" role="group" aria-label="סגנון תצוגה">
+          <Button size="sm" variant={state.view.renderMode === 'model' ? 'primary' : 'secondary'} onClick={() => setState(current => ({ ...current, view: { ...current.view, renderMode: 'model' } }))}>מודל</Button>
+          <Button size="sm" variant={state.view.renderMode === 'realistic' ? 'primary' : 'secondary'} onClick={() => setState(current => ({ ...current, view: { ...current.view, renderMode: 'realistic', quality: 'high' } }))}>ריאליסטי</Button>
+        </div>
+        {state.view.mode === 'walk' && <div className="walk-controls" aria-label="בקרי הליכה">
+          <Button aria-label="קדימה" onPointerDown={() => setWalkVector({ forward: 1, strafe: 0 })} onPointerUp={() => setWalkVector({ forward: 0, strafe: 0 })} onPointerCancel={() => setWalkVector({ forward: 0, strafe: 0 })}>▲</Button>
+          <Button aria-label="שמאלה" onPointerDown={() => setWalkVector({ forward: 0, strafe: -1 })} onPointerUp={() => setWalkVector({ forward: 0, strafe: 0 })} onPointerCancel={() => setWalkVector({ forward: 0, strafe: 0 })}>◀</Button>
+          <Button aria-label="אחורה" onPointerDown={() => setWalkVector({ forward: -1, strafe: 0 })} onPointerUp={() => setWalkVector({ forward: 0, strafe: 0 })} onPointerCancel={() => setWalkVector({ forward: 0, strafe: 0 })}>▼</Button>
+          <Button aria-label="ימינה" onPointerDown={() => setWalkVector({ forward: 0, strafe: 1 })} onPointerUp={() => setWalkVector({ forward: 0, strafe: 0 })} onPointerCancel={() => setWalkVector({ forward: 0, strafe: 0 })}>▶</Button>
+          <span><Move3D size={14} /> גררו במסך למבט · WASD במחשב</span>
+        </div>}
         <div className="hint">גרירה לסיבוב · גלגלת לזום · קליק כפול על פתח לבחירה</div>
         <div className="notice">{notice}</div>
         {warnings.length > 0 && <div className="site-warning">{warnings[0]}</div>}
@@ -756,6 +842,8 @@ export default function App() {
           reader.readAsDataURL(file);
         }} />
     </section>
+    {editorOpen && <FloorEditor2D state={state} onChange={setState} onClose={() => setEditorOpen(false)} />}
+    {renderOpen && <RenderPanel canvas={canvasRef.current} onClose={() => setRenderOpen(false)} />}
     {sources && <div className="modal-backdrop" role="presentation" onMouseDown={() => setSources(false)}><section className="modal" role="dialog" aria-modal="true" aria-label="מקורות והנחות" onMouseDown={event => event.stopPropagation()}>
       <Button className="modal-close" size="icon" variant="ghost" onClick={() => setSources(false)} aria-label="סגירה"><X size={18} /></Button>
       <h2>מקורות, הנחות ודיוק</h2>

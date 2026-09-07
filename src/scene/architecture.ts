@@ -3,8 +3,8 @@ import polygonClipping from 'polygon-clipping';
 import type { MultiPolygon } from 'polygon-clipping';
 import { buildWallGeometry, normalizeApertures } from '../lib/wallGeometry';
 import {
-  BALCONIES, BASE_DEPTH, BASE_WIDTH, FOOTPRINTS, LIGHT_WELLS, PARTY_Z, ROOMS, SITE, SLAB,
-  STAIR_HOLES, WALLS, floorElevation, planPoint, resolvedOpenings, wallHeight, wallScale,
+  BALCONIES, BASE_DEPTH, BASE_WIDTH, FOOTPRINTS, LIGHT_WELLS, PARTY_Z, SITE, SLAB,
+  STAIR_HOLES, floorElevation, planPoint, resolvedOpenings, resolvedRooms, resolvedWalls, wallHeight, wallScale,
 } from '../model/plans';
 import type { FloorId, OpeningSpec, Room, SimulationState, UnitId, Vec2 } from '../model/types';
 
@@ -66,9 +66,32 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
   const pickables: THREE.Mesh[] = [];
   const materials: THREE.Material[] = [];
   const allOpenings = resolvedOpenings(state);
+  const allWalls = resolvedWalls(state);
+  const allRooms = resolvedRooms(state);
+  const realistic = state.view.renderMode === 'realistic';
+  const grassTexture = (() => {
+    if (!realistic) return null;
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 96;
+    const context = canvas.getContext('2d')!;
+    context.fillStyle = mix(palette.success, palette.background, .42).getStyle(); context.fillRect(0, 0, 96, 96);
+    for (let index = 0; index < 850; index++) {
+      context.fillStyle = mix(palette.success, palette.background, .18 + (index % 7) * .07).getStyle();
+      context.fillRect((index * 47) % 96, (index * 31) % 96, 1, 2 + index % 3);
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; texture.repeat.set(5, 5);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  })();
 
   const material = (color: THREE.ColorRepresentation, options: THREE.MeshStandardMaterialParameters = {}) => {
-    const mat = new THREE.MeshStandardMaterial({ color, roughness: .84, metalness: 0, side: THREE.DoubleSide, ...options });
+    const mat = new THREE.MeshStandardMaterial({
+      color,
+      roughness: realistic ? .68 : .84,
+      metalness: realistic ? .03 : 0,
+      side: THREE.DoubleSide,
+      ...options,
+    });
     mat.clipShadows = false; // Visual section planes MUST NOT open the building to sunlight.
     materials.push(mat);
     return mat;
@@ -108,13 +131,16 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
   const earth = mesh(group, slabGeometry(ground, .18), material(mix(palette.background, palette.border, .12)), { role: 'terrain', blockerName: 'קרקע אטומה מחוץ לחצר האנגלית' });
   earth.position.y = -.18;
 
-  const surface = (ring: Vec2[], color: THREE.ColorRepresentation, y = .008, opacity = 1) => {
-    const surf = mesh(group, slabGeometry(polygon(ring), .008), material(color, { transparent: opacity < 1, opacity, depthWrite: opacity === 1 }), { role: 'landscape' }, false);
+  const surface = (ring: Vec2[], color: THREE.ColorRepresentation, y = .008, opacity = 1, grass = false) => {
+    const surf = mesh(group, slabGeometry(polygon(ring), .008), material(color, {
+      transparent: opacity < 1, opacity, depthWrite: opacity === 1,
+      ...(grass && grassTexture ? { map: grassTexture, roughness: .98 } : {}),
+    }), { role: grass ? 'grass' : 'landscape' }, false);
     surf.position.y = y;
     return surf;
   };
-  surface([[0, -12], [9.8, -12], [9.8, -5.2], [0, -5.2]], mix(palette.success, palette.background, .78));
-  surface([[0, 16.2], [9.3, 16.2], [9.3, 19.3], [8.4, 19.3], [8.4, 21.6], [7.5, 21.6], [7.5, 18.15], [0, 18.15]], mix(palette.success, palette.background, .78));
+  surface([[0, -12], [9.8, -12], [9.8, -5.2], [0, -5.2]], realistic ? palette.success : mix(palette.success, palette.background, .78), .008, 1, true);
+  surface([[0, 16.2], [9.3, 16.2], [9.3, 19.3], [8.4, 19.3], [8.4, 21.6], [7.5, 21.6], [7.5, 18.15], [0, 18.15]], realistic ? palette.success : mix(palette.success, palette.background, .78), .008, 1, true);
   surface([[0, -5.2], [9.8, -5.2], [9.8, -1.5], [0, -1.5]], mix(palette.border, palette.background, .65));
   surface([[9.7, 10.35], [11.8, 10.35], [11.8, 22], [9.7, 22]], mix(palette.border, palette.background, .7));
   surface([[.3, 19.35], [7.3, 19.35], [7.3, 21.55], [.3, 21.55]], mix(palette.link, palette.surface, .7), .016);
@@ -286,7 +312,7 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
         }
       };
 
-      for (const wall of openPlanFirst ? [] : WALLS.filter(w => w.unit === unit && w.floor === floor)) {
+      for (const wall of openPlanFirst ? [] : allWalls.filter(w => w.unit === unit && w.floor === floor)) {
         const length = Math.hypot(wall.b[0] - wall.a[0], wall.b[1] - wall.a[1]);
         const height = wallHeight(wall, settings);
         const openings = allOpenings.filter(o => o.wallId === wall.id);
@@ -369,7 +395,7 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
       }
 
       if (floor !== 'basement' && !openPlanFirst) {
-        for (const room of ROOMS.filter(r => r.unit === unit && r.floor === floor)) {
+        for (const room of allRooms.filter(r => r.unit === unit && r.floor === floor)) {
           const furniture = new THREE.Group();
           furniture.position.set(room.center[0], elevation + .03, room.center[1] - PARTY_Z);
           house.add(furniture);
@@ -571,6 +597,11 @@ export function disposeArchitecture(architecture: Architecture) {
     if (object instanceof THREE.Mesh || object instanceof THREE.Line) geometries.add(object.geometry);
   });
   geometries.forEach(geometry => geometry.dispose());
-  new Set(architecture.materials).forEach(mat => mat.dispose());
+  new Set(architecture.materials).forEach(mat => {
+    if (mat instanceof THREE.MeshStandardMaterial) {
+      mat.map?.dispose(); mat.normalMap?.dispose(); mat.roughnessMap?.dispose(); mat.aoMap?.dispose();
+    }
+    mat.dispose();
+  });
   architecture.group.removeFromParent();
 }
