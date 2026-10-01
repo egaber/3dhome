@@ -1,0 +1,38 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Factory: start background watcher",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"factory:start"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Factory: local web dashboard",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"factory:web"
+			],
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Factory: live status",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"factory:live"
+			],
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}

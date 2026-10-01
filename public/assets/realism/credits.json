@@ -1,0 +1,32 @@
+{
+  "retrieved": "2026-09-11",
+  "materials": {
+    "provider": "Poly Haven", "license": "CC0-1.0", "licenseUrl": "https://polyhaven.com/license",
+    "source": "https://polyhaven.com/a/{id}",
+    "authors": { "wood_floor": "Dimitrios Savva", "fabric_pattern_07": "Rob Tuytel", "marble_01": "Rob Tuytel", "plastered_wall": "Amal Kumar", "floor_tiles_06": "Rob Tuytel" },
+    "modifications": "Original 1K JPEG maps, renamed locally to color/normal/roughness. Fabric uses col_1, normal maps use nor_gl. No pixel edits."
+  },
+  "models": [
+    { "id": "SheenWoodLeatherSofa", "author": "Eric Chadwick / Darmstadt Graphics Group GmbH", "copyright": "2024 Darmstadt Graphics Group GmbH", "license": "CC-BY-4.0", "licenseUrl": "https://creativecommons.org/licenses/by/4.0/", "original": "Fran Calvente, 2021, CC0, https://polyhaven.com/a/sofa_03", "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenWoodLeatherSofa", "modifications": "GLB bytes unchanged. Runtime 180-degree Y front-axis correction, centering, grounding, fitting to editable dimensions and placement; original materials retained." },
+    { "id": "SheenChair", "author": "Eric Chadwick / Wayfair, LLC", "copyright": "2020 Wayfair, LLC", "license": "CC0-1.0", "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/", "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair", "modifications": "GLB bytes unchanged. Runtime 180-degree Y front-axis correction, centering, grounding, fitting to editable dimensions and placement; original materials retained." }
+  ],
+  "files": {
+    "fabric_pattern_07-color.jpg": "aeb7a1487b77aec55e39de662def4d371f5c7c617f62d1f291d7f9932ffebdc9",
+    "fabric_pattern_07-normal.jpg": "f6955bbdead9f023f2357f6f8808ed49627d10882cd2a3cb6b5a5ace155abc45",
+    "fabric_pattern_07-roughness.jpg": "3d90ac40b5c32a15649cc8525b7eeed133ea46b63a0e3eae5e34911d5c967e3a",
+    "floor_tiles_06-color.jpg": "ac159ca6072e30dd9d5c65e2d6eae7bb55a7dc9f06e6d141e9119390563511c2",
+    "floor_tiles_06-normal.jpg": "efaff964d5688dd52ea3b876d5dac63ffee76d8d7270e30c11c81095246d5fdd",
+    "floor_tiles_06-roughness.jpg": "9c1996177892f220bcfdbc44675d0cd404482cfa80b1c577c7bcc100637ef8b6",
+    "marble_01-color.jpg": "b10dabea976d68baa976a0d4e8dac58789df8d26a1b50697f320106f1b00a229",
+    "marble_01-normal.jpg": "77c2a9b549a6a408659f8197be91945aeb0abc33e697f1dd2ce24ee8dc7c2bc0",
+    "marble_01-roughness.jpg": "a3e9f373d22aebc449af73f6a18c9817e2146f17e567a083609ba8fbb62a72f5",
+    "plastered_wall-color.jpg": "73312ebb6eabc8e0a55addd8a82a8924bcd1e717b9488a887cc77f14b6ea554e",
+    "plastered_wall-normal.jpg": "504e1f7baf4b68714c64b6670e7954bebe99efe31c49f7ce5a2089e4b76023b5",
+    "plastered_wall-roughness.jpg": "844aaa32fda1130262ad8a50084aec7bd5ebce272c8af5e6ba076734beedcd66",
+    "SheenChair.glb": "f0af2a2b102d28d540236306ae19f8fb36842df76bd38cf76f063f9bd2853399",
+    "SheenWoodLeatherSofa.glb": "5349e042ad41e695e89f1110230c4ee0c75b2bc62ef830c7016be6ecf665bfb6",
+    "wood_floor-color.jpg": "2a1c07687b6dbb214c4b9213739c6d92d425f1f0fc8ab3ac157f105d78240789",
+    "wood_floor-normal.jpg": "452247f0d0d1b7fc7f8324ff3b6ed60bcc6de1405f4284eeb8d9bce90d4939c2",
+    "wood_floor-roughness.jpg": "061f1e1293251b2d28c76e3fac1ea9452b0e8648bb8f9b3728e09db386166e5c"
+  }
+}

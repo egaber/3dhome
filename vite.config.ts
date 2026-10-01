@@ -9,5 +9,5 @@ export default defineConfig({
   base: './',
   server: { port: 5173, strictPort: true, host: '127.0.0.1' },
   build: { target: 'es2022', assetsInlineLimit: 20_000_000, chunkSizeWarningLimit: 4000 },
-  test: { environment: 'node', include: ['src/**/*.test.ts'] },
+  test: { environment: 'node', include: ['src/**/*.test.ts', 'scripts/factory/**/*.test.ts'], allowOnly: false },
 });

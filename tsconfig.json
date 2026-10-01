@@ -21,5 +21,5 @@
     "baseUrl": ".",
     "paths": { "@/*": ["src/*"] }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts", "factory_runner.ts", "scripts/factory", "playwright.config.ts", "playwright.factory.config.ts", "e2e"]
 }

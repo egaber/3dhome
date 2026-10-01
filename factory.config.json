@@ -1,0 +1,12 @@
+{
+  "pollIntervalMs": 10000,
+  "stageTimeoutMs": 600000,
+  "maxStepsPerTask": 32,
+  "maxRetries": 3,
+  "maxFollowUpsPerRoot": 5,
+  "maxBacklogSize": 200,
+  "maxAgentRunsPerDay": 40,
+  "maxAiCreditsPerStage": 30,
+  "cliCommand": "copilot",
+  "model": "auto"
+}

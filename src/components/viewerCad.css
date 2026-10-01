@@ -1,0 +1,64 @@
+.viewer-measure-toggle { position: absolute; z-index: 8; top: 98px; right: 14px; min-height: 44px !important; background: var(--cp-panel-strong) !important; color: var(--cp-text) !important; border-color: var(--cp-border) !important; }
+.viewer-measure-toggle[aria-pressed="true"] { border-color: var(--cp-accent) !important; }
+.viewer-measurement-panel { position: absolute; z-index: 8; right: 14px; top: 150px; width: min(340px, calc(100% - 104px)); max-height: calc(100% - 164px); display: flex; flex-direction: column; overflow: hidden; padding: 0; border: 1px solid var(--cp-border); border-radius: 10px; background: var(--cp-panel-strong); color: var(--cp-text); font-size: 12px; }
+.measurement-summary { flex: none; padding: 8px; border-bottom: 1px solid var(--cp-border); background: var(--cp-surface); }
+.measurement-form-scroll, .cad-quick-scroll { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px; }
+.viewer-measurement-panel label { display: grid; min-width: 0; gap: 4px; }
+.viewer-measurement-panel .cad-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.viewer-measurement-panel .cad-floor-levels { display: flex; flex-wrap: wrap; gap: 2px 8px; margin-block: 4px 0; font-size: 11px; }
+.stage .viewer-measurement-panel .button, .stage .viewer-measurement-panel input, .stage .viewer-measurement-panel select, .stage .viewer-measurement-panel summary { min-height: 44px; }
+.viewer-measurement-panel summary { cursor: pointer; padding-block: 12px; }
+.viewer-measure-result { display: block; color: var(--cp-accent); font-weight: 600; line-height: 1.8; }
+.measurement-points { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+/* Specificity beats the legacy .quick-editor regardless of CSS import order. */
+.stage .quick-editor { left: auto; right: 14px; top: 150px; width: min(340px, calc(100% - 104px)); max-height: calc(100% - 164px); overflow: auto; }
+.stage .quick-editor.cad-quick-editor { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.stage .cad-quick-editor > header { flex: none; margin: 0; padding: 4px 8px; border-bottom: 1px solid var(--cp-border); background: var(--cp-surface); }
+.cad-quick-editor .cad-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.stage .cad-quick-editor input, .stage .cad-quick-editor select, .stage .cad-quick-editor .button { min-height: 44px; }
+.stage .cad-quick-editor .button { min-width: 44px; }
+.cad-quick-editor .cad-stair-options, .inspector .cad-stair-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.cad-quick-editor .cad-stair-options button, .inspector .cad-stair-options button { display: grid; gap: 4px; min-height: 44px; padding: 8px; color: var(--cp-text); background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 10px; }
+.cad-quick-editor .cad-stair-options button[aria-pressed="true"], .inspector .cad-stair-options button[aria-pressed="true"] { border-color: var(--cp-accent); }
+.cad-quick-editor .cad-stair-options svg, .inspector .cad-stair-options svg { width: 100%; height: 100px; }
+.measurement-active .hint { display: none; }
+.viewer-measurement-panel :focus-visible, .viewer-measure-toggle:focus-visible, .cad-quick-editor :focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
+/* Status is a real row, not a competing overlay on navigation or the canvas. */
+.stage:has(.stage-surface) { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
+/* Walk controls have a compact flow row; never stack the D-pad over zoom/chat. */
+.stage:has(> .walk-controls) { grid-template-rows: auto minmax(0, 1fr) auto; container-type: size; }
+.stage > .walk-controls { position: static; z-index: auto; transform: none; display: grid; grid-template-columns: repeat(4, 44px); gap: 4px; padding: 4px 14px; border-bottom: 1px solid var(--cp-border); background: var(--cp-surface); }
+.stage > .walk-controls .button:nth-child(n) { grid-row: 1; min-width: 44px; min-height: 44px; padding: 0; touch-action: none; }
+.stage > .walk-controls .button:nth-child(3) { grid-column: 3; }
+.stage > .walk-controls .button:nth-child(4) { grid-column: 4; }
+.stage > .walk-controls :focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
+/* Anchor chat above the actual status height, including wrapped Hebrew hints.
+  Stage height minus status (%), walk row (53), navigation (150) and gap (4). */
+.stage:has(> .walk-controls) .stage-status { position: relative; }
+.stage:has(> .walk-controls) .model-chat { bottom: calc(100% + 4px); max-height: min(480px, calc(100cqh - 100% - 207px)); grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.stage:has(> .walk-controls) .chat-context { max-height: 44px; overflow: auto; }
+.stage-surface { position: relative; min-height: 0; min-width: 0; overflow: hidden; }
+.stage-status { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2px 8px; padding: 4px 8px; border-top: 1px solid var(--cp-border); background: var(--cp-surface); }
+.stage-status .stage-chat:not([hidden]) { display: contents; }
+.stage-status .chat-launcher { position: static; min-height: 44px; max-width: 112px; padding-inline: 6px; font-size: 11px; }
+.stage-status .model-chat { font-size: 12px; z-index: 10; }
+.stage-status .model-chat .hint, .stage-status .model-chat .notice { position: static; }
+.stage .stage-status .notice, .stage .stage-status .hint, .stage .stage-status .site-warning { position: static; min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; font-size: 11px; }
+.stage .stage-status .notice { max-height: 44px; overflow: auto; }
+.stage .stage-status .hint { grid-column: 1 / -1; text-align: center; }
+.stage-status .hint > svg { display: inline; vertical-align: middle; }
+.stage-status .site-warning { direction: rtl; }
+.stage-status .site-warning summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--cp-danger); }
+.stage-status .site-warning[open] { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; }
+.stage-status .site-warning > div { max-height: 44px; overflow: auto; }
+.stage-status .site-warning p { margin: 4px 0; }
+.stage-status :focus-visible { outline: 2px solid var(--cp-accent); outline-offset: -2px; }
+.stage-surface .asset-status { left: 88px; right: 14px; top: auto; bottom: 4px; max-width: none; max-height: 28px; overflow: auto; }
+@media (max-width: 900px) {
+  .measurement-active .viewer { bottom: 44%; }
+  .viewer-measurement-panel { top: 56%; bottom: 0; max-height: none; }
+  .stage .quick-editor { top: 48%; bottom: 0; max-height: none; }
+  .viewer-measure-toggle { top: 90px; font-size: 12px; }
+  .viewer-measure-result { line-height: 1.5; }
+  .measurement-summary { padding: 4px 8px; }
+}

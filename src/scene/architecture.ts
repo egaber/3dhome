@@ -1,10 +1,18 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import polygonClipping from 'polygon-clipping';
 import type { MultiPolygon } from 'polygon-clipping';
-import { buildWallGeometry, normalizeApertures } from '../lib/wallGeometry';
+import { createFinish, furnitureFinish, MODEL_ASSETS, projectSurfaceUV, SURFACE_ASSETS, type Finish } from './materialLibrary';
+import type { RealisticAssets } from './realisticAssets';
+import { disposeResources } from './resources';
+import { FINISHES, surfaceTarget, type FinishId, type SurfaceFloor } from '../model/appearance';
+import { buildWallGeometry } from '../lib/wallGeometry';
+import { getWallApertures, resolveStairGeometry, type StairPart } from '../model/cad';
+import { rotatePlanPoint } from '../model/rotation';
+import { furnitureParts } from '../model/furnitureParts';
 import {
   BALCONIES, BASE_DEPTH, BASE_WIDTH, FOOTPRINTS, LIGHT_WELLS, PARTY_Z, SITE, SLAB,
-  STAIR_HOLES, floorElevation, planPoint, resolvedOpenings, resolvedRooms, resolvedWalls, wallHeight, wallScale,
+  floorElevation, planPoint, resolvedFurniture, resolvedOpenings, resolvedRooms, resolvedWalls, wallHeight,
 } from '../model/plans';
 import type { FloorId, OpeningSpec, Room, SimulationState, UnitId, Vec2 } from '../model/types';
 
@@ -16,9 +24,13 @@ export interface Architecture {
   group: THREE.Group;
   blockers: THREE.Mesh[];
   pickables: THREE.Mesh[];
+  /** Actual model surfaces only; caller filters ancestor visibility and visual clipping. */
+  measurementTargets: THREE.Mesh[];
   materials: THREE.Material[];
 }
-type MeshMeta = { unit?: UnitId; floor?: FloorId; role?: string; blockerName?: string; openingId?: string; neighborId?: string };
+export type MeshMeta = { unit?: UnitId; floor?: FloorId; role?: string; blockerName?: string; openingId?: string; neighborId?: string;
+  wallId?: string; furnitureId?: string; stairId?: string; fromFloor?: 'basement' | 'ground'; toFloor?: 'ground' | 'first'; provenance?: 'concept';
+  partIndex?: number; partKind?: StairPart['kind'] };
 
 export function readPalette(): Palette {
   const style = getComputedStyle(document.documentElement);
@@ -26,7 +38,7 @@ export function readPalette(): Palette {
   return { background: value('bg'), surface: value('surface'), soft: value('surface-soft'), border: value('border'), text: value('text'), muted: value('text-muted'), accent: value('accent'), success: value('success'), warning: value('warning'), link: value('link'), wall: value('building-wall') };
 }
 
-/** Every render colour derives from the artifact's CSS theme tokens. */
+/** Diagram colours follow UI tokens; realistic physical finishes keep natural albedo. */
 function mix(a: string, b: string, amount: number) { return new THREE.Color(a).lerp(new THREE.Color(b), amount); }
 export const polygon = (ring: Vec2[]): MultiPolygon => [[ring]];
 
@@ -58,19 +70,20 @@ export function roofGeometry(width: number, depth: number, rise: number) {
   return geo;
 }
 
-export function buildArchitecture(state: SimulationState, palette: Palette): Architecture {
+export function buildArchitecture(state: SimulationState, palette: Palette, assets?: RealisticAssets): Architecture {
   const group = new THREE.Group();
   group.name = 'Plan-registered architecture';
   group.rotation.y = -THREE.MathUtils.degToRad(state.northBearing);
   const blockers: THREE.Mesh[] = [];
   const pickables: THREE.Mesh[] = [];
+  const measurementTargets: THREE.Mesh[] = [];
   const materials: THREE.Material[] = [];
   const allOpenings = resolvedOpenings(state);
   const allWalls = resolvedWalls(state);
-  const allRooms = resolvedRooms(state);
+  const allFurniture = resolvedFurniture(state);
   const realistic = state.view.renderMode === 'realistic';
   const grassTexture = (() => {
-    if (!realistic) return null;
+    if (!realistic || typeof document === 'undefined') return null;
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = 96;
     const context = canvas.getContext('2d')!;
     context.fillStyle = mix(palette.success, palette.background, .42).getStyle(); context.fillRect(0, 0, 96, 96);
@@ -96,15 +109,49 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
     materials.push(mat);
     return mat;
   };
+  const finishes = new Map<Finish, THREE.MeshPhysicalMaterial>();
+  const finish = (name: Finish) => {
+    const cached = finishes.get(name);
+    if (cached) return cached;
+    const mat = createFinish(name);
+    const surface = SURFACE_ASSETS.find(asset => asset.id === mat.userData.surface);
+    const maps = surface && assets?.surfaces.get(surface.id);
+    if (maps) {
+      mat.map = maps.color; mat.normalMap = maps.normal; mat.roughnessMap = maps.roughness;
+      mat.normalScale.setScalar(surface.strength);
+    }
+    finishes.set(name, mat); materials.push(mat);
+    return mat;
+  };
+  const assigned = new Map<string, THREE.MeshPhysicalMaterial>();
+  const assignedMaterial = (target: string, fallback: THREE.Material): THREE.Material => {
+    const assignment = realistic && state.appearance?.assignments[target];
+    if (!assignment) return fallback;
+    const cached = assigned.get(target); if (cached) return cached;
+    const builtin = FINISHES.includes(assignment.material as FinishId);
+    const mat = builtin ? finish(assignment.material as FinishId).clone() : createFinish('paint');
+    if (!builtin) { mat.color.set(0xffffff); mat.map = assets?.images.get(assignment.material) ?? null; }
+    mat.roughness = assignment.roughness; mat.userData = { ...mat.userData, target, metres: assignment.metres };
+    // A decorative glass finish never opens a physical wall/door to sunlight.
+    assigned.set(target, mat); materials.push(mat); return mat;
+  };
+  const materialTarget = (meta: MeshMeta): string | null => meta.furnitureId ? `furniture-${meta.furnitureId}`
+    : meta.openingId ? `opening-${meta.openingId}` : meta.stairId ? `stair-${meta.stairId}` : meta.wallId ? `wall-${meta.wallId}`
+      : meta.neighborId ? `neighbor-${meta.neighborId}` : meta.unit ? `building-${meta.unit}` : null;
   const mesh = (parent: THREE.Object3D, geometry: THREE.BufferGeometry, mat: THREE.Material, meta: MeshMeta, opaque = true, edges = false) => {
+    const target = materialTarget(meta);
+    if (target) mat = assignedMaterial(target, meta.unit ? assignedMaterial(`building-${meta.unit}`, mat) : mat);
+    const surface = SURFACE_ASSETS.find(asset => asset.id === mat.userData.surface);
+    if (surface || mat.userData.metres) projectSurfaceUV(geometry, mat.userData.metres ?? surface!.metres);
     const object = new THREE.Mesh(geometry, mat);
     object.userData = { ...meta, opaque };
-    object.castShadow = opaque;
+    object.castShadow = opaque || (realistic && meta.role === 'furniture' && mat.userData.finish !== 'glass');
     object.receiveShadow = true;
     parent.add(object);
     if (opaque) blockers.push(object);
     if (meta.unit || meta.openingId || meta.neighborId) pickables.push(object);
-    if (edges) {
+    if (meta.unit || meta.neighborId || ['terrain', 'boundary-wall', 'front-wall', 'bin-pillar', 'landscape', 'grass'].includes(meta.role ?? '')) measurementTargets.push(object);
+    if (edges && !realistic) {
       const lineMat = new THREE.LineBasicMaterial({ color: palette.muted, transparent: true, opacity: .17 });
       materials.push(lineMat);
       const line = new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 25), lineMat);
@@ -113,9 +160,41 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
     }
     return object;
   };
+  const slabSurfaces = (object: THREE.Mesh, unit: UnitId, top: SurfaceFloor, bottom: SurfaceFloor | null) => {
+    const original = Array.isArray(object.material) ? object.material[0] : object.material;
+    const topId = surfaceTarget('floor', unit, top), bottomId = bottom && surfaceTarget('ceiling', unit, bottom);
+    object.userData.floorTarget = topId; object.userData.ceilingTarget = bottomId;
+    if (!realistic) return;
+    const upper = assignedMaterial(topId, original), lower = bottomId ? assignedMaterial(bottomId, finish('plaster')) : original;
+    // Distinct UV repeats for top and underside use geometry UV in metres and
+    // material-local cloned texture transforms (never mutate the pooled maps).
+    const faceMaterial = (source: THREE.Material) => {
+      if (!(source instanceof THREE.MeshStandardMaterial)) return source;
+      const m = source.clone();
+      const scale = source.userData.metres ?? SURFACE_ASSETS.find(a => a.id === source.userData.surface)?.metres ?? 1;
+      for (const slot of ['map', 'normalMap', 'roughnessMap'] as const) if (m[slot]) { m[slot] = m[slot]!.clone(); m[slot]!.repeat.setScalar(1 / scale); }
+      materials.push(m); return m;
+    };
+    object.material = [faceMaterial(upper), faceMaterial(lower), original];
+    const geometry = object.geometry; projectSurfaceUV(geometry, 1); geometry.clearGroups();
+    const normals = geometry.getAttribute('normal'), count = geometry.index?.count ?? normals.count;
+    let start = 0, materialIndex = -1;
+    for (let i = 0; i < count; i += 3) {
+      const n = normals.getY(geometry.index ? geometry.index.getX(i) : i);
+      const next = n > .5 ? 0 : n < -.5 ? 1 : 2;
+      if (next !== materialIndex) {
+        if (materialIndex >= 0) geometry.addGroup(start, i - start, materialIndex);
+        start = i; materialIndex = next;
+      }
+    }
+    if (count) geometry.addGroup(start, count - start, materialIndex);
+  };
   const box = (parent: THREE.Object3D, w: number, h: number, d: number, x: number, y: number, z: number, mat: THREE.Material, meta: MeshMeta, opaque = true) => {
     if (w <= 0 || h <= 0 || d <= 0) return null;
-    const object = mesh(parent, new THREE.BoxGeometry(w, h, d), mat, meta, opaque);
+    const geometry = realistic && meta.role === 'furniture'
+      ? new RoundedBoxGeometry(w, h, d, 2, Math.min(w, h, d) * (mat.userData.finish === 'fabric' ? .22 : .07))
+      : new THREE.BoxGeometry(w, h, d);
+    const object = mesh(parent, geometry, mat, meta, opaque);
     object.position.set(x, y + h / 2, z);
     return object;
   };
@@ -125,8 +204,11 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
   let ground: MultiPolygon = polygon([[-55, -50], [65, -50], [65, 60], [-55, 60]]);
   for (const unit of ['north', 'south'] as UnitId[]) {
     if (!state.buildings[unit].enabled) continue;
-    const holes = [FOOTPRINTS.basement[unit], ...LIGHT_WELLS[unit]];
-    for (const hole of holes) ground = polygonClipping.difference(ground, polygon(hole.map(p => planPoint(p, unit, state))));
+    // Union touching excavations BEFORE the affine transform. Repeated subtraction
+    // of independently rounded shared edges can leave an unclosable output ring.
+    const holes = polygonClipping.union(polygon(FOOTPRINTS.basement[unit]), ...LIGHT_WELLS[unit].map(polygon));
+    const transformed = holes.map(rings => rings.map(ring => ring.map(p => planPoint(p, unit, state))));
+    ground = polygonClipping.difference(ground, transformed);
   }
   const earth = mesh(group, slabGeometry(ground, .18), material(mix(palette.background, palette.border, .12)), { role: 'terrain', blockerName: 'קרקע אטומה מחוץ לחצר האנגלית' });
   earth.position.y = -.18;
@@ -161,7 +243,7 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
 
   // Two opaque 3 m boundary walls along the long sides of the lot. They are
   // physical blockers, so both the rendered shadows and room ray tests include them.
-  const boundaryMat = material(mix(palette.surface, palette.border, .34));
+  const boundaryMat = realistic ? finish('plaster') : material(mix(palette.surface, palette.border, .34));
   const boundaryDepth = SITE.front - SITE.back;
   const boundaryCenterZ = (SITE.front + SITE.back) / 2;
   for (const [x, name] of [[SITE.left, 'חומת מגרש מערבית'], [SITE.right, 'חומת מגרש מזרחית']] as const) {
@@ -173,7 +255,7 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
 
   // Front boundary of the street-facing dwelling: low wall, gate opening and
   // a full-height bin pillar/niche, based on the submitted street context.
-  const frontWallMat = material(mix(palette.surface, palette.border, .30));
+  const frontWallMat = realistic ? finish('plaster') : material(mix(palette.surface, palette.border, .30));
   const binMat = material(mix(palette.text, palette.muted, .22));
   box(group, 8.45, 1.25, .24, 4.225, 0, 21.78, frontWallMat,
     { role: 'front-wall', blockerName: 'חומת הבית הקדמי · 1.25 מ׳' }, true);
@@ -249,16 +331,18 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
       const elevation = floorElevation(floor, settings);
       const openPlanFirst = unit === 'north' && floor === 'first' && settings.firstFloorVariant === 'open-plan';
       const meta: MeshMeta = { unit, floor, blockerName: `מעטפת ${floor === 'ground' ? 'קומת הקרקע' : floor === 'first' ? 'הקומה הראשונה' : 'המרתף'}` };
-      const plaster = material(palette.wall);
+      const plaster = realistic ? finish('plaster') : material(palette.wall);
       const ceiling = material(mix(palette.surface, palette.border, .08));
-      const floorMat = material(mix(palette.background, palette.border, .17));
-      const frameMat = material(mix(palette.text, palette.muted, .3), { roughness: .5, metalness: .3 });
-      const glassMat = material(mix(palette.surface, palette.link, .17), { transparent: true, opacity: .16, depthWrite: false, roughness: .15, metalness: .06 });
+      const floorMat = realistic ? finish(floor === 'first' ? 'wood' : 'tile') : material(mix(palette.background, palette.border, .17));
+      const frameMat = realistic ? finish('metal') : material(mix(palette.text, palette.muted, .3), { roughness: .5, metalness: .3 });
+      const glassMat = realistic ? finish('glass') : material(mix(palette.surface, palette.link, .17), { transparent: true, opacity: .16, depthWrite: false, roughness: .15, metalness: .06 });
       let floorShape: MultiPolygon = polygon(localRing(FOOTPRINTS[floor][unit]));
       if (floor === 'first' && !openPlanFirst) floorShape = polygonClipping.union(floorShape, ...BALCONIES[unit].map(r => polygon(localRing(r))));
-      if (floor !== 'basement') floorShape = polygonClipping.difference(floorShape, polygon(localRing(STAIR_HOLES[unit])));
+      const incomingStair = floor === 'basement' ? null : resolveStairGeometry(state, unit, floor === 'ground' ? 'basement' : 'ground');
+      if (incomingStair) floorShape = polygonClipping.difference(floorShape, polygon(localRing(incomingStair.footprint)));
       const slab = mesh(house, slabGeometry(floorShape, SLAB), floorMat, { ...meta, role: 'slab', blockerName: 'תקרת/רצפת בטון' });
       slab.position.y = elevation - SLAB;
+      slabSurfaces(slab, unit, floor, floor === 'first' ? 'ground' : floor === 'ground' ? 'basement' : null);
 
       if (floor === 'first' && !openPlanFirst) {
         const balconyGlass = material(mix(palette.surface, palette.link, .14), {
@@ -290,7 +374,7 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
 
       const addOpening = (wallGroup: THREE.Group, opening: OpeningSpec, center: number, width: number, sill: number, height: number, thick: number) => {
         if (width <= 0 || height <= 0) return;
-        const data = { ...meta, openingId: opening.id, role: 'opening', blockerName: opening.shutter ? 'תריס סגור' : opening.kind === 'door' && !opening.open ? 'דלת סגורה' : 'מסגרת פתח' };
+        const data = { ...meta, wallId: opening.wallId, openingId: opening.id, role: 'opening', blockerName: opening.shutter ? 'תריס סגור' : opening.kind === 'door' && !opening.open ? 'דלת סגורה' : 'מסגרת פתח' };
         const frame = Math.min(.052, width / 6, height / 6);
         // The dark reveal is geometry on the edges, not a dark rectangle painted
         // over a solid wall. Glass transmits direct rays; shutters/doors do not.
@@ -300,8 +384,13 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
         if (opening.kind !== 'door' && opening.kind !== 'void') box(wallGroup, width, frame, thick + .03, center, sill, 0, frameMat, data);
         const isOpaque = opening.shutter || (opening.kind === 'door' && !opening.open);
         if (isOpaque) {
-          const opaqueMat = material(mix(palette.muted, palette.background, .24));
+          const opaqueMat = realistic ? finish(opening.shutter ? 'metal' : 'wood') : material(mix(palette.muted, palette.background, .24));
           box(wallGroup, width - frame * 2, height - frame, .06, center, sill, 0, opaqueMat, data, true);
+          if (realistic && opening.kind === 'door' && !opening.shutter) {
+            // Handle geometry is decorative: never changes the aperture/ray blocker.
+            for (const z of [-.055, .055]) box(wallGroup, Math.min(.14, width * .18), .025, .04,
+              center + width * .32, sill + Math.min(1.05, height * .5), z, finish('metal'), data, false);
+          }
         } else if (opening.kind !== 'void' && opening.kind !== 'door') {
           box(wallGroup, width - 2 * frame, height - 2 * frame, .012, center, sill + frame, 0, glassMat, data, false);
           if (opening.kind === 'glazing' && width > 1.7) box(wallGroup, frame * .6, height - frame * 2, .06, center, sill + frame, 0, frameMat, data);
@@ -312,17 +401,16 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
         }
       };
 
-      for (const wall of openPlanFirst ? [] : allWalls.filter(w => w.unit === unit && w.floor === floor)) {
+      for (const wall of allWalls.filter(w => w.unit === unit && w.floor === floor)) {
         const length = Math.hypot(wall.b[0] - wall.a[0], wall.b[1] - wall.a[1]);
         const height = wallHeight(wall, settings);
         const openings = allOpenings.filter(o => o.wallId === wall.id);
-        const apertures = normalizeApertures(length, height, openings.map(o => ({ id: o.id, center: o.position * length, width: o.width / wallScale(wall, state), height: o.height, sill: o.sill })));
+        const apertures = getWallApertures(wall, state);
         const wallGroup = new THREE.Group();
         wallGroup.position.set(wall.a[0], elevation, wall.a[1] - PARTY_Z);
         wallGroup.rotation.y = -Math.atan2(wall.b[1] - wall.a[1], wall.b[0] - wall.a[0]);
         house.add(wallGroup);
-        const object = mesh(wallGroup, buildWallGeometry(length, height, wall.thickness, apertures), plaster, { ...meta, role: 'wall', blockerName: wall.retaining ? 'קיר חצר אנגלית' : wall.exterior ? 'קיר חיצוני' : 'מחיצה פנימית' }, true, true);
-        object.userData.wallId = wall.id;
+        mesh(wallGroup, buildWallGeometry(length, height, wall.thickness, apertures), plaster, { ...meta, role: 'wall', wallId: wall.id, provenance: wall.provenance, blockerName: wall.retaining ? 'קיר חצר אנגלית' : wall.exterior ? 'קיר חיצוני' : 'מחיצה פנימית' }, true, true);
         for (const aperture of apertures) {
           const opening = openings.find(o => o.id === aperture.id)!;
           addOpening(wallGroup, opening, aperture.center, aperture.width, aperture.sill, aperture.height, wall.thickness);
@@ -330,94 +418,70 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
       }
 
       if (openPlanFirst) {
-        const height = settings.upperHeight - SLAB;
-        const altMeta = { ...meta, role: 'wall', blockerName: 'קיר חלופת קומה א׳ הפתוחה' };
-        const altWall = (a: Vec2, b: Vec2, mat = plaster) => {
-          const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
-          const wall = box(house, length, height, .18, (a[0] + b[0]) / 2, elevation,
-            (a[1] + b[1]) / 2 - PARTY_Z, mat, altMeta, true);
-          if (wall) wall.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]);
-        };
         const altGlass = material(mix(palette.surface, palette.link, .14), {
           transparent: true, opacity: .23, depthWrite: false, roughness: .1, metalness: .06,
         });
-        const altGlazing = (a: Vec2, b: Vec2) => {
-          const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
-          const glass = box(house, length, 2.55, .025, (a[0] + b[0]) / 2, elevation,
-            (a[1] + b[1]) / 2 - PARTY_Z, altGlass, { ...meta, role: 'glazing' }, false);
-          if (glass) glass.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]);
-        };
-        // 12 × 7.2 m concept fitted to the measured 12.39 × 6.84 m shell.
-        altWall([0, 0], [0, PARTY_Z]);
-        altWall([0, PARTY_Z], [11.9, PARTY_Z]);
-        altWall([0, 0], [.45, 0]);
-        altGlazing([.45, 0], [4.0, 0]);
-        altWall([4.0, 0], [4.3, 0]);
-        altGlazing([4.3, 0], [8.1, 0]);
-        altWall([8.1, 0], [8.4, 0]);
-        altGlazing([8.4, 0], [11.9, 0]);
-        altWall([11.9, 0], [11.9, .45]);
-        altGlazing([11.9, .45], [11.9, 5.8]);
-        altWall([11.9, 5.8], [11.9, PARTY_Z]);
-        // Service room and compact WC shown along the south edge of the sketch.
-        altWall([0, 4.55], [2.8, 4.55]);
-        altWall([2.8, 4.55], [2.8, PARTY_Z]);
-        altWall([9.25, 5.05], [11.9, 5.05]);
-        altWall([9.25, 5.05], [9.25, PARTY_Z]);
         const deck = mesh(house, slabGeometry(polygon([[11.9, -PARTY_Z], [14.9, -PARTY_Z], [14.9, 0], [11.9, 0]]), .10),
           material(mix(palette.warning, palette.surface, .68)), { ...meta, role: 'balcony' }, false);
         deck.position.y = elevation - .08;
         const balconyRail = box(house, PARTY_Z, 1.05, .035, 14.9, elevation, -PARTY_Z / 2,
           altGlass, { ...meta, role: 'glass-railing' }, false);
         if (balconyRail) { balconyRail.rotation.y = Math.PI / 2; balconyRail.castShadow = true; }
-
-        const furnitureMat = material(mix(palette.surface, palette.border, .22));
-        const sofaMat = material(mix(palette.surface, palette.text, .15));
-        // 4 × 1.2 m island, dining table and two sofas from the submitted plan.
-        box(house, 1.2, .92, 4.0, 1.75, elevation, 2.25 - PARTY_Z, furnitureMat, { ...meta, role: 'furniture' }, false);
-        box(house, 1.15, .08, 2.35, 5.0, elevation + .73, 2.25 - PARTY_Z, furnitureMat, { ...meta, role: 'furniture' }, false);
-        box(house, 2.1, .72, .85, 8.0, elevation, 2.0 - PARTY_Z, sofaMat, { ...meta, role: 'furniture' }, false);
-        box(house, 2.1, .72, .85, 10.25, elevation, 2.0 - PARTY_Z, sofaMat, { ...meta, role: 'furniture' }, false);
       }
 
-      if (floor !== (settings.storeys === 2 ? 'first' : 'ground')) {
-        const hole = STAIR_HOLES[unit];
-        const xmin = hole[0][0], xmax = hole[1][0], zmin = hole[0][1], zmax = hole[2][1];
-        const rise = floor === 'basement' ? settings.basementDepth : settings.groundHeight;
-        const tread = (zmax - zmin - .72) / 9;
-        const stepMat = material(mix(palette.border, palette.background, .35));
-        const flightWidth = (xmax - xmin - .13) / 2;
-        for (let i = 0; i < 9; i++) {
-          box(house, flightWidth, .10, tread + .012, xmin + flightWidth / 2, elevation + rise / 18 * (i + 1) - .1, zmax - .1 - tread * (i + .5) - PARTY_Z, stepMat, { ...meta, role: 'stair', blockerName: 'מדרגות' });
-          box(house, flightWidth, .10, tread + .012, xmax - flightWidth / 2, elevation + rise / 18 * (i + 10) - .1, zmin + .72 + tread * (i + .5) - PARTY_Z, stepMat, { ...meta, role: 'stair', blockerName: 'מדרגות' });
+      const stair = floor === 'first' ? null : resolveStairGeometry(state, unit, floor);
+      if (stair) {
+        const stepMat = realistic ? finish('stone') : material(mix(palette.border, palette.background, .35));
+        for (const [partIndex, part] of stair.parts.entries()) {
+          const tread = box(house, part.width, part.height, part.depth, part.center[0], part.bottom, part.center[1] - PARTY_Z, stepMat,
+            { ...meta, role: 'stair', stairId: `stair-${unit}-${stair.fromFloor}`, fromFloor: stair.fromFloor, toFloor: stair.toFloor, partIndex, partKind: part.kind, blockerName: part.kind === 'landing' ? 'פודסט מדרגות' : 'מדרגות' });
+          if (tread) tread.rotation.y = -THREE.MathUtils.degToRad(part.rotation ?? 0);
         }
-        box(house, xmax - xmin, .12, .72, (xmin + xmax) / 2, elevation + rise / 2 - .12, zmin + .36 - PARTY_Z, stepMat, { ...meta, role: 'stair', blockerName: 'פודסט מדרגות' });
       }
 
-      if (floor !== 'basement' && !openPlanFirst) {
-        for (const room of allRooms.filter(r => r.unit === unit && r.floor === floor)) {
-          const furniture = new THREE.Group();
-          furniture.position.set(room.center[0], elevation + .03, room.center[1] - PARTY_Z);
-          house.add(furniture);
-          const mat = material(mix(palette.surface, palette.border, .27));
-          const detail = material(mix(palette.background, palette.muted, .20));
-          const furnitureMeta = { ...meta, role: 'furniture' };
-          const add = (w: number, h: number, d: number, x: number, y: number, z: number, m = mat) => box(furniture, w, h, d, x, y, z, m, furnitureMeta, false);
-          if (room.kind === 'bedroom') {
-            add(1.45, .32, 1.95, 0, 0, .14, detail); add(1.41, .18, 1.92, 0, .32, .13);
-            add(.52, .08, .35, -.38, .5, -.56); add(.52, .08, .35, .38, .5, -.56);
-            add(1.55, .87, .12, 0, 0, -.84, detail);
-          } else if (room.kind === 'living') {
-            add(2.15, .38, .82, 0, 0, .9, detail); add(2.15, .39, .18, 0, .38, 1.2, detail);
-            add(.17, .2, .82, -1, .38, .9); add(.17, .2, .82, 1, .38, .9);
-            add(1.0, .34, .52, 0, 0, -.15, detail);
-          } else if (room.kind === 'dining') {
-            add(1.6, .08, .85, 0, .74, 0);
-            for (const x of [-.64, .64]) for (const z of [-.3, .3]) add(.06, .74, .06, x, 0, z, detail);
-            for (const x of [-.55, .55]) for (const z of [-.68, .68]) { add(.42, .44, .4, x, 0, z, detail); add(.42, .35, .045, x, .44, z + (z < 0 ? -.18 : .18)); }
-          } else if (room.kind === 'kitchen') {
-            add(.62, .90, Math.min(2.7, room.depth - .3), -room.width / 2 + .38, 0, 0, detail);
-            add(.68, .035, Math.min(2.7, room.depth - .3) + .04, -room.width / 2 + .38, .9, 0);
+      for (const item of allFurniture.filter(item => item.unit === unit && item.floor === floor)) {
+        const furniture = new THREE.Group();
+        furniture.position.set(item.center[0], elevation, item.center[1] - PARTY_Z);
+        furniture.rotation.y = -THREE.MathUtils.degToRad(item.rotation);
+        house.add(furniture);
+        const furnitureMeta: MeshMeta = { ...meta, role: 'furniture', furnitureId: item.id };
+        furniture.userData = furnitureMeta;
+        const modelAsset = realistic && MODEL_ASSETS.find(asset => asset.kind === item.kind);
+        const modelId = state.appearance?.models[item.id] ?? (modelAsset ? modelAsset.id : undefined);
+        const template = realistic && modelId && assets?.models.get(modelId);
+        if (template) {
+          const model = template.clone(true);
+          model.scale.set(item.width, item.height, item.depth);
+          model.userData = { ...furnitureMeta, assetId: modelId };
+          model.traverse(object => {
+            if (!(object instanceof THREE.Mesh)) return;
+            object.userData = { ...furnitureMeta, assetId: modelId, opaque: false };
+            const target = `furniture-${item.id}`;
+            if (state.appearance?.assignments[target]) {
+              const original = Array.isArray(object.material) ? object.material[0] : object.material;
+              object.material = assignedMaterial(target, original);
+              object.geometry = object.geometry.clone();
+              projectSurfaceUV(object.geometry, state.appearance.assignments[target].metres);
+            }
+            object.castShadow = true; object.receiveShadow = true;
+            pickables.push(object); measurementTargets.push(object);
+            materials.push(...(Array.isArray(object.material) ? object.material : [object.material]));
+          });
+          furniture.add(model);
+          continue;
+        }
+        const tones = realistic ? {
+          body: finish(furnitureFinish(item.kind, 'body')), detail: finish(furnitureFinish(item.kind, 'detail')),
+          surface: finish(furnitureFinish(item.kind, 'surface')), glass: finish('glass'),
+        } : { body: material(mix(palette.surface, palette.border, .27)), detail: material(mix(palette.background, palette.muted, .20)),
+          surface: material(palette.surface), glass: glassMat };
+        for (const part of furnitureParts(item)) {
+          if (part.shape === 'box') {
+            box(furniture, part.width, part.height, part.depth, part.center[0], part.bottom, part.center[1], tones[part.tone], furnitureMeta, false);
+          } else {
+            const cylinder = mesh(furniture, new THREE.CylinderGeometry(1, 1, part.height, 24), tones[part.tone], furnitureMeta, false);
+            cylinder.scale.set(part.width / 2, 1, part.depth / 2);
+            cylinder.position.set(part.center[0], part.bottom + part.height / 2, part.center[1]);
           }
         }
       }
@@ -436,7 +500,7 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
       const roofGroup = new THREE.Group();
       roofGroup.userData = { unit, displayFloor: 'roof', role: 'roof-floor' };
       house.add(roofGroup);
-      const terraceMat = material(mix(palette.warning, palette.surface, .72));
+      const terraceMat = realistic ? finish('tile') : material(mix(palette.warning, palette.surface, .72));
       const enclosed: Vec2[] = unit === 'north'
         ? [[1.5, 2.2], [9.1, 2.2], [9.1, 5.3], [1.5, 5.3]]
         : [[1.2, 8.0], [8.5, 8.0], [8.5, 13.0], [1.2, 13.0]];
@@ -448,10 +512,12 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
       const roofSlab = mesh(roofGroup, slabGeometry(polygon(localRing(FOOTPRINTS.first[unit])), SLAB), roofMat,
         { unit, floor: 'first', role: 'roof-floor-slab', blockerName: 'רצפת קומת גג' }, true, true);
       roofSlab.position.y = roofBase - SLAB;
+      slabSurfaces(roofSlab, unit, 'roof', roofFloor);
       for (const terrace of [terraceNorth, terraceEast, ...(terraceSouth ? [terraceSouth] : [])]) {
         const deck = mesh(roofGroup, slabGeometry(polygon(localRing(terrace)), .035), terraceMat,
           { unit, floor: 'first', role: 'roof-terrace' }, false);
         deck.position.y = roofBase + .01;
+        slabSurfaces(deck, unit, 'roof', null);
       }
       const terraceGlass = material(mix(palette.surface, palette.link, .18), {
         transparent: true, opacity: .30, depthWrite: false, roughness: .10, metalness: .08,
@@ -473,8 +539,8 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
       addTerraceRail(terraceEast[1], terraceEast[2]);
       if (terraceSouth) addTerraceRail(terraceSouth[2], terraceSouth[3]);
       const enclosedLocal = localRing(enclosed);
-      const suiteMat = material(palette.wall);
-      const officeMat = material(mix(palette.wall, palette.link, .04));
+      const suiteMat = realistic ? finish('plaster') : material(palette.wall);
+      const officeMat = realistic ? finish('plaster') : material(mix(palette.wall, palette.link, .04));
       const [x0, z0] = enclosedLocal[0], [x1, z1] = enclosedLocal[2];
       const width = x1 - x0, depth = z1 - z0;
       const roomHeight = settings.roofFloorHeight - SLAB;
@@ -502,9 +568,11 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
       const suiteFloor = mesh(roofGroup, slabGeometry(polygon([[x0, z0], [dividerX, z0], [dividerX, z1], [x0, z1]]), .025), suiteMat,
         { unit, floor: 'first', role: 'roof-suite' }, false);
       suiteFloor.position.y = roofBase + .015;
+      slabSurfaces(suiteFloor, unit, 'roof', null);
       const officeFloor = mesh(roofGroup, slabGeometry(polygon([[dividerX, z0], [x1, z0], [x1, z1], [dividerX, z1]]), .025), officeMat,
         { unit, floor: 'first', role: 'roof-office' }, false);
       officeFloor.position.y = roofBase + .015;
+      slabSurfaces(officeFloor, unit, 'roof', null);
       const glass = material(mix(palette.surface, palette.link, .18), { transparent: true, opacity: .18, depthWrite: false });
       for (let index = 0; index < 2; index++) {
         box(roofGroup, northGap, roomHeight - .25, .025,
@@ -517,9 +585,11 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
       const pitched = mesh(roofGroup, roofGeometry(width + .35, depth + .35, rise), roofMat,
         { unit, floor: 'first', role: 'roof-peak', blockerName: `גג משופע · שפיץ ${settings.roofPeakHeight.toFixed(2)} מ׳` }, true, true);
       pitched.position.set((x0 + x1) / 2, roofBase + settings.roofFloorHeight, (z0 + z1) / 2);
+      slabSurfaces(pitched, unit, 'roof', 'roof');
     } else {
       const roof = mesh(house, slabGeometry(roofShape, SLAB), roofMat, { unit, floor: roofFloor, role: 'roof', blockerName: 'גג אטום (גם במצב חתך)' }, true, true);
       roof.position.y = roofBase - SLAB;
+      slabSurfaces(roof, unit, 'roof', roofFloor);
     }
     if (settings.parapet > .01 && !(settings.roofEnabled && settings.storeys === 2)) {
       const parapetMat = material(mix(palette.surface, palette.border, .11));
@@ -559,14 +629,15 @@ export function buildArchitecture(state: SimulationState, palette: Palette): Arc
   }
 
   group.updateMatrixWorld(true);
-  return { group, blockers, pickables, materials };
+  return { group, blockers, pickables, measurementTargets, materials };
 }
 
 export function roomSamplePoints(room: Room, state: SimulationState): THREE.Vector3[] {
+  room = resolvedRooms(state).find(item => item.id === room.id) ?? room;
   const points: THREE.Vector3[] = [];
   const settings = state.buildings[room.unit];
   for (const x of [-.28, 0, .28]) for (const z of [-.28, 0, .28]) {
-    const p = planPoint([room.center[0] + x * room.width, room.center[1] + z * room.depth], room.unit, state);
+    const p = planPoint(rotatePlanPoint([room.center[0] + x * room.width, room.center[1] + z * room.depth], room.center, room.rotation ?? 0), room.unit, state);
     const r = -THREE.MathUtils.degToRad(state.northBearing);
     points.push(new THREE.Vector3(p[0] * Math.cos(r) + p[1] * Math.sin(r), floorElevation(room.floor, settings) + .08, -p[0] * Math.sin(r) + p[1] * Math.cos(r)));
   }
@@ -596,12 +667,6 @@ export function disposeArchitecture(architecture: Architecture) {
   architecture.group.traverse(object => {
     if (object instanceof THREE.Mesh || object instanceof THREE.Line) geometries.add(object.geometry);
   });
-  geometries.forEach(geometry => geometry.dispose());
-  new Set(architecture.materials).forEach(mat => {
-    if (mat instanceof THREE.MeshStandardMaterial) {
-      mat.map?.dispose(); mat.normalMap?.dispose(); mat.roughnessMap?.dispose(); mat.aoMap?.dispose();
-    }
-    mat.dispose();
-  });
+  disposeResources(geometries, architecture.materials);
   architecture.group.removeFromParent();
 }

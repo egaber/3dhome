@@ -6,3 +6,7 @@ src/assets/sheet-words.json
 test-results/
 *.local
 *.pdf
+.factory/
+playwright-report/
+tasks.json.lock/
+*.tmp

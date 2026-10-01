@@ -1,0 +1,40 @@
+/* WebGL's high-DPI backing buffer must not become the CSS size on mobile. */
+.viewer canvas { display: block; width: 100%; height: 100%; }
+.material-library {
+  width: min(860px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow-y: auto;
+  margin: auto; padding: 24px; border: 1px solid var(--cp-border); border-radius: 16px;
+  background: var(--cp-surface); color: var(--cp-text); font: inherit;
+}
+.material-library::backdrop { background: var(--cp-overlay); }
+.material-library header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.material-library h2 { font-size: 20px; margin: 0; }
+.material-library h3 { font-size: 15px; margin: 12px 0 4px; }
+.material-library p, .material-library li { line-height: 1.7; }
+.material-library header p, .material-library small { color: var(--cp-text-muted); }
+.material-library a { color: var(--cp-link); text-underline-offset: 3px; }
+.material-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 12px; margin: 20px 0; }
+.material-grid article { border: 1px solid var(--cp-border); border-radius: 10px; padding: 8px; min-width: 0; }
+.material-grid img { display: block; width: 100%; height: 100px; object-fit: cover; border-radius: 6px; }
+.material-grid small, .material-grid a { display: block; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.material-library footer { display: flex; justify-content: flex-end; margin-top: 20px; }
+.object-material { display: grid; gap: 8px; padding-block: 12px; border-top: 1px solid var(--cp-border); }
+.object-material label, .material-fields label { display: grid; gap: 4px; min-width: 0; }
+.object-material select, .object-material input, .catalog-controls select, .catalog-controls input { width: 100%; min-height: 36px; border: 1px solid var(--cp-border); background: var(--cp-surface); color: var(--cp-text); border-radius: 6px; padding: 6px; }
+.material-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.object-material small { font-size: 11px; line-height: 1.5; color: var(--cp-text-muted); }
+.custom-material-preview { width: 100%; height: 80px; object-fit: cover; }
+.catalog-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 12px; }
+.catalog-controls label { display: grid; gap: 4px; flex: 1; min-width: 120px; }
+.catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 10px; max-height: 360px; overflow: auto; }
+.catalog-card { padding: 10px; border: 1px solid var(--cp-border); border-radius: 10px; display: grid; gap: 6px; }
+.catalog-card img { width: 100%; height: 85px; object-fit: contain; background: var(--cp-surface-soft); }
+.catalog-card small { font-size: 11px; }
+.library-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 16px; }
+.library-target { padding: 12px; background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: 10px; }
+.material-library button:focus-visible, .material-library a:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 3px; }
+.asset-status { position: absolute; top: 100px; left: 80px; max-width: min(340px, calc(100% - 92px)); padding: 6px 10px; border: 1px solid var(--cp-border); border-radius: 10px; background: var(--cp-panel-strong); color: var(--cp-text-muted); font-size: 11px; pointer-events: none; }
+@media (max-width: 600px) {
+  .material-library { padding: 16px; }
+  .material-library footer button { width: 100%; min-height: 44px; }
+  .asset-status { top: 148px; font-size: 10px; }
+}

@@ -1,9 +1,37 @@
 import type { SolarLocation } from '../lib/solar';
+import type { Appearance } from './appearance';
 
 export type UnitId = 'north' | 'south';
 export type FloorId = 'basement' | 'ground' | 'first';
 export type Vec2 = [number, number];
 export type OpeningKind = 'window' | 'glazing' | 'door' | 'void';
+export type StairLayout = 'straight' | 'u-shaped';
+export const FURNITURE_KINDS = ['bed', 'sofa', 'coffee-table', 'dining-table', 'chair', 'kitchen-unit', 'kitchen-island', 'armchair', 'sink', 'cooktop', 'fridge', 'dishwasher', 'toilet', 'basin', 'shower'] as const;
+export type FurnitureKind = typeof FURNITURE_KINDS[number];
+
+/** Horizontal dimensions/centers are unscaled plan metres; height is vertical metres. */
+export interface FurnitureSpec {
+  id: string;
+  unit: UnitId;
+  floor: FloorId;
+  kind: FurnitureKind;
+  center: Vec2;
+  rotation: number;
+  width: number;
+  depth: number;
+  height: number;
+  source: 'plan' | 'added';
+}
+
+/** An absolute placement override. Absent sizes continue to follow the seed. */
+export interface FurnitureEdit {
+  center: Vec2;
+  rotation: number;
+  deleted: boolean;
+  width?: number;
+  depth?: number;
+  height?: number;
+}
 
 export interface BuildingSettings {
   enabled: boolean;
@@ -22,6 +50,13 @@ export interface BuildingSettings {
   roofPeakHeight: number;
   firstFloorVariant: 'original' | 'open-plan';
   storeys: 1 | 2;
+  stairLayout: StairLayout;
+  /** Local plan degrees around the shared stairwell center; absent means zero. */
+  stairRotation?: number;
+  /** Absolute local-plan stairwell center; absent retains the original plan anchor. */
+  stairPosition?: Vec2;
+  stairScale?: number;
+  stairEnabled?: boolean;
 }
 
 export interface NeighborSettings {
@@ -66,6 +101,8 @@ export interface PlanWall {
   thickness: number;
   exterior: boolean;
   retaining: boolean;
+  /** Concept variants are not measurements from the source PDF. */
+  provenance?: 'concept';
   /** A balcony parapet has a fixed height, not the storey's full height. */
   low?: number;
   openings: OpeningSpec[];
@@ -79,6 +116,8 @@ export interface Room {
   center: Vec2;
   width: number;
   depth: number;
+  /** Local plan degrees; the annotation and non-overridden room furniture rotate together. */
+  rotation?: number;
   kind: 'living' | 'kitchen' | 'dining' | 'bedroom' | 'bath' | 'hall' | 'basement';
 }
 
@@ -92,11 +131,14 @@ export interface RoomEdit {
   center: Vec2;
   width: number;
   depth: number;
+  rotation?: number;
   deleted: boolean;
 }
 
 export interface SimulationState {
   version: 1;
+  /** Optional for version-1 compatibility. Images are embedded in project backups. */
+  appearance?: Appearance;
   date: string;
   minutes: number;
   location: SolarLocation;
@@ -114,6 +156,8 @@ export interface SimulationState {
   design: {
     wallEdits: Record<string, WallEdit>;
     roomEdits: Record<string, RoomEdit>;
+    furnitureEdits: Record<string, FurnitureEdit>;
+    addedFurniture: FurnitureSpec[];
   };
   view: {
     mode: 'orbit' | 'plan' | 'walk';

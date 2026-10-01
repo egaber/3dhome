@@ -1,0 +1,151 @@
+[
+  {
+    "id": "TASK-001",
+    "title": "Create a robust health check endpoint with validation and an automated test file",
+    "description": "Disabled example, not an approved feature. This is a static React/Vite app deployed to GitHub Pages, with no server runtime. Replace this example with a real backlog item, or explicitly scope a static health artifact and its tests; do not introduce an undeployable API server.",
+    "kind": "feature",
+    "status": "Todo",
+    "assigned_to": "pm",
+    "enabled": false,
+    "retry_count": 0,
+    "max_retries": 3,
+    "step_count": 0,
+    "phase": "plan",
+    "acceptance_criteria": [],
+    "depends_on": [],
+    "contract": "",
+    "approvals": [],
+    "history": []
+  },
+  {
+    "id": "TASK-002",
+    "title": "Fix mobile toolbar clipping while preserving the Hebrew RTL layout",
+    "description": "Disabled finding from factory setup, not yet authorized for implementation. At a 393x851 viewport, browser inspection measured .topbar at 530px wide with left=-137 while .app-shell and the viewport are 393px wide. The desktop/mobile smoke tests pass, but the mobile toolbar extends beyond the viewport. See the setup screenshots and MEMORY.md; add a targeted regression test rather than weakening the smoke test.",
+    "kind": "bug",
+    "status": "Todo",
+    "assigned_to": "pm",
+    "enabled": false,
+    "retry_count": 0,
+    "max_retries": 3,
+    "step_count": 0,
+    "phase": "plan",
+    "acceptance_criteria": [
+      "At 393x851 and 360x800, all toolbar actions are reachable without horizontal clipping.",
+      "Hebrew RTL order, the desktop layout, and keyboard accessibility remain intact.",
+      "A browser regression test checks the header and action bounds against the viewport."
+    ],
+    "depends_on": [],
+    "contract": "",
+    "approvals": [],
+    "history": []
+  },
+  {
+    "id": "TASK-003",
+    "title": "Enable arrow-key navigation in house walk mode (Up/Down: forward/back; Left/Right: strafe) and Page Up/Page Down for vertical movement; preserve WASD, respect collisions and height limits, ignore movement shortcuts while editing inputs, and add automated regression tests.",
+    "description": "",
+    "kind": "feature",
+    "status": "Blocked",
+    "assigned_to": "engineer",
+    "enabled": true,
+    "retry_count": 3,
+    "max_retries": 3,
+    "step_count": 14,
+    "phase": "delivery",
+    "acceptance_criteria": [
+      "Arrow keys move the player in walk mode as follows: Up/Down = forward/backward, Left/Right = strafe left/right without breaking existing WASD controls.",
+      "Page Up/Page Down adjust vertical movement in walk mode while preserving the current movement rules and height limits.",
+      "Movement respects collision checks and vertical/horizontal bounds so the player cannot pass through blocked geometry or exceed valid height limits.",
+      "Movement shortcuts are ignored when the user is actively editing an input field, preserving normal text input behavior.",
+      "Existing WASD input continues to work as before and is not regressed by the new keyboard handling.",
+      "Automated regression tests cover the new key mappings and the blocked-input / collision / height-limit cases."
+    ],
+    "depends_on": [],
+    "contract": "Contract for rework: 1) Add a small pure helper module under src/lib/walkNavigation.ts with typed public contracts only: key-to-axis mapping, input vector, bounds/clamp helper, editable-target detection, and input aggregation. 2) Define vertical limits from the active floor/building geometry (eye height, slab thickness, ceiling/roof rules) and treat missing runtime/architecture as a conservative no-op. 3) Compute horizontal bounds in transformed architecture/world coordinates after northBearing/building transforms while retaining existing SITE semantics. 4) Use a swept collision check against the same relevant blockers for 3D motion; no-op atomically when blocked or out-of-bounds. 5) Keep pressed-key state in Viewer refs only; clear it on walk-mode exit, blur, visibility changes, and editable-target focus/blur; preventDefault only for accepted movement keys. 6) Tests: helper-level regressions for WASD/arrow/PageUp/PageDown mapping, editable-target rejection, zero/combined input normalization, horizontal bounds, vertical clamping, collision blocks, and App-level no-scroll/blocked-move cases; no backend, persistence, or schema changes.",
+    "approvals": [
+      "ux-design",
+      "skeptic",
+      "plan"
+    ],
+    "last_error": "The approved engineer scope remains limited to Viewer + walkNavigation helper and focused tests, but this task is blocked by missing browser/e2e evidence: QA recorded typecheck, unit suite, and production build passing, yet the required browser gate is explicitly marked browser_passed=false with no Playwright log or screenshots. The contract still requires proof for editable-target rejection, mode scoping, preventDefault/no-scroll behavior, blocked-move atomic no-op, and vertical-limit validation in the browser gate; no operator notes or scope conflicts were supplied, so no scope expansion is approved. The task cannot be marked complete or handed off as successful without a valid npm run test:e2e result and the missing browser-level coverage.",
+    "history": [
+      {
+        "at": "2026-09-07T17:06:58.216Z",
+        "agent": "pm",
+        "outcome": "handoff",
+        "summary": "PM defines the work for walk-mode keyboard navigation: add arrow-key movement (Up/Down forward/back, Left/Right strafe), Page Up/Page Down vertical movement, keep existing WASD behavior, enforce collision and height-limit rules, ignore movement shortcuts while editing text inputs, and cover the regressions with automated tests."
+      },
+      {
+        "at": "2026-09-07T17:08:03.624Z",
+        "agent": "architect",
+        "outcome": "handoff",
+        "summary": "The current walk implementation is concentrated in src/App.tsx: Viewer captures only WASD in a window key listener, applies pointer/WASD horizontal movement through separate paths, and has no editable-target guard or vertical movement. Horizontal movement currently uses architecture blockers plus fixed SITE bounds in the render loop, while the pointer path only checks selected wall roles and does not enforce the same bounds. The next design should unify keyboard and pointer movement through one walk-navigation contract so WASD, arrows, and Page Up/Page Down share collision and bounds behavior. Ignore keydown/keyup movement when the event target is an input, textarea, select, or contenteditable element; prevent browser scrolling only for accepted movement keys in walk mode. Keep transient pressed-key state in Viewer refs and do not persist it. Define vertical movement as camera and controls.target translation together, with explicit lower/upper limits derived from the active walk floor/building geometry; swept collision checks must cover 3D motion and retain the existing horizontal SITE limits and blocker semantics. Recommended implementation surface is a small pure helper under src/lib (keyboard mapping, editable-target detection, input aggregation, and clamping) plus the Viewer integration in src/App.tsx; no backend, dependency, persistence, or SimulationState schema change is needed. Preserve RTL/accessibility by retaining the existing pointer controls and adding clear keyboard guidance without relying on glyph direction. Regression coverage should include helper-level tests for Up/Down/Left/Right and Page Up/Page Down mappings, WASD compatibility, editable-target rejection, zero/combined input normalization, horizontal bounds, vertical clamping, and collision-blocked movement; App/Viewer integration should verify accepted key events do not scroll and blocked movement leaves camera/target unchanged. Validation must use the repository’s existing typecheck, unit test, build, and e2e gates; static GitHub Pages output and existing Three.js disposal behavior must remain unchanged."
+      },
+      {
+        "at": "2026-09-07T17:32:53.835Z",
+        "agent": "ux-ui",
+        "outcome": "handoff",
+        "summary": "UX/UI plan reviewed against the current Hebrew/RTL viewer. Walk mode keeps the existing four-button touch/D-pad control, pointer camera rotation, and accessible Hebrew labels; keyboard guidance should identify both WASD and arrow keys, with Page Up/Page Down described as vertical movement without relying on directional glyphs. Accepted movement shortcuts must be scoped to walk mode, prevent page scrolling only for those keys, preserve focus and normal editing behavior for input, textarea, select, and contenteditable controls, and leave unrelated controls unaffected. Camera and target should move together so orientation remains stable. Collision, horizontal bounds, and floor/ceiling rejection should provide a stable no-op rather than visual jumps; the existing notice/warning surfaces are appropriate for errors or unavailable runtime, while no new loading state is needed. Desktop should retain the current overlay positions and design tokens; mobile should preserve the responsive single-column layout, touch controls, adequate button hit areas, and avoid covering chat/notice content. No operator notes were supplied, no scope conflict was identified, and no implementation or shared-state files were changed. Visual acceptance: walk-mode controls remain discoverable in RTL, keyboard help is concise and readable in both desktop and mobile layouts, focus indicators remain visible, and keyboard use does not cause browser scrolling or interfere with text editing."
+      },
+      {
+        "at": "2026-09-07T17:33:39.594Z",
+        "agent": "skeptic",
+        "outcome": "revise",
+        "summary": "The design is not implementation-ready. It must define a precise walk-floor model for ground, first, basement, and roof-disabled/storey variants, including how eye height, floor slab thickness, ceiling/roof limits, and runtime state changes derive the vertical lower/upper bounds. It must also define world-space horizontal bounds after northBearing/building transforms; the current unrotated SITE checks are not equivalent to the rendered architecture. Collision requirements need a concrete swept-volume strategy rather than a single center ray, with explicit behavior for diagonal, vertical, and simultaneous inputs and for missing architecture/runtime. Clarify whether pointer/D-pad movement is intentionally migrated to the same contract, since its current React effect is discrete while keyboard movement is frame-based. Keyboard lifecycle must clear pressed keys on mode changes, blur/visibility changes, and editable-target transitions so stuck keys cannot resume movement. Acceptance tests should prove keydown/keyup filtering, mode scoping, preventDefault only for accepted movement keys, camera/target atomic no-op on collisions and bounds, transformed-site bounds, and vertical limits for every supported floor. No operator notes were supplied; no implementation or shared state was changed."
+      },
+      {
+        "at": "2026-09-07T17:34:22.475Z",
+        "agent": "architect",
+        "outcome": "handoff",
+        "summary": "Architect review: the design is still not implementation-ready. Evidence from MEMORY.md and the current source shows separate pointer/WASD paths, no editable-target guard, no vertical movement, no pressed-key cleanup, and only unrotated SITE bounds; architecture exposes blockers but no walk-floor/ceiling contract. No operator notes or scope conflicts were supplied, so no scope expansion is approved. Rework is required before engineering: define precise floor/ceiling bounds for ground/first/basement/roof-disabled variants, transformed world-space horizontal bounds, a swept collision strategy for diagonal/vertical inputs, and a single keyboard lifecycle for mode/blur/editable transitions."
+      },
+      {
+        "at": "2026-09-07T17:35:28.627Z",
+        "agent": "ux-ui",
+        "outcome": "handoff",
+        "summary": "UX/UI rework review completed against the current Viewer, model, architecture, and styles. The revised design is implementation-ready for skeptic review: preserve the existing RTL four-button D-pad and pointer rotation, route D-pad and keyboard motion through the same atomic movement evaluator, and update the walk hint to identify WASD, arrow keys, and Page Up/Page Down without directional-glyph dependence. Walk movement remains scoped to walk mode; accepted movement keys prevent page scrolling, while input, textarea, select, contenteditable, and unrelated controls retain normal behavior. The active walk volume is the selected room's unit/floor: basement lower eye bound is floorElevation(basement)+eyeHeight with the modeled ground slab as the conservative ceiling; ground uses elevation 0 and the modeled ground-height ceiling; first uses groundHeight and the modeled upper-floor/roof-slab ceiling. First-floor navigation is unavailable when storeys=1, and roof geometry does not create a new navigable mode; roof-disabled and roof-enabled variants retain the same first-floor bounds unless a modeled roof-room surface is explicitly active. Bounds must be recomputed when room, building settings, floor, storeys, or roof state changes, with missing runtime/architecture producing a stable no-op. Horizontal limits must be derived from transformed SITE corners after northBearing and building transforms, not fixed unrotated coordinates. Collision acceptance is a swept-volume check over the complete 3D candidate displacement against the existing architecture blockers, including diagonal and simultaneous horizontal/vertical input; blocked or out-of-bounds movement must leave camera and controls.target unchanged. Camera and target translate together. Pressed keys remain transient Viewer refs and clear on walk-mode exit, window blur, document visibility loss, and editable-target focus/blur. Existing design tokens, visible focus indicators, mobile hit areas, overlay positions, Hebrew/RTL layout, persistence schema, and Three.js cleanup remain unchanged. No operator notes were supplied and no scope conflict was identified."
+      },
+      {
+        "at": "2026-09-07T17:36:09.974Z",
+        "agent": "skeptic",
+        "outcome": "handoff",
+        "summary": "APPROVED: The reworked design is implementation-ready. It specifies a concrete active-floor model (basement/ground/first/roof-disabled variants), transformed world-space horizontal bounds derived from northBearing/building transforms, a 3D swept collision check for simultaneous diagonal/vertical movement, and a unique keyboard lifecycle that clears transient refs on mode exits, blur/visibility loss, and editable-target focus/blur. It preserves existing WASD semantics, limits preventDefault to accepted walk keys, ignores input while editing, keeps camera and controls.target translations atomic, and keeps all changes scoped to Viewer + helper without persistence/backend/schema expansion."
+      },
+      {
+        "at": "2026-09-07T17:36:52.694Z",
+        "agent": "team-lead",
+        "outcome": "handoff",
+        "summary": "Approved implementation scope after reviewing AGENTS.md, MEMORY.md, and the task context. The skeptic-approved contract is feasible and remains limited to Viewer plus a pure walkNavigation helper and focused tests; no operator notes or scope conflicts were present. Current source still has only WASD movement, fixed untransformed bounds, ray-only collision checks, no editable-target guard, and no vertical movement, so implementation is required. Engineer must preserve WASD, add arrow/Page Up/Page Down mappings, shared atomic movement with transformed bounds, vertical limits, swept blocker checks, keyboard lifecycle cleanup, and regression tests without changing persistence, schema, factory, or protected files."
+      },
+      {
+        "at": "2026-09-07T17:39:57.579Z",
+        "agent": "engineer",
+        "outcome": "handoff",
+        "summary": "Implemented walk-mode keyboard navigation in the approved Viewer/helper scope. Added typed walkNavigation contracts and tests for WASD, arrow, Page Up/Page Down mappings, combined-input normalization, bounds, and clamping. Viewer now ignores editable targets, scopes movement to walk mode, prevents scrolling only for accepted movement keys, clears transient keys on mode exit, blur, visibility loss, and cleanup, applies transformed site bounds and active-floor height limits, and performs swept 3D blocker checks with atomic camera/target translation. Updated the walk hint for keyboard controls. No operator notes or scope conflicts were present. Typecheck, full unit suite (507 tests), and production build passed."
+      },
+      {
+        "at": "2026-09-07T17:41:08.146Z",
+        "agent": "qa",
+        "outcome": "revise",
+        "summary": "Executable typecheck, full unit suite (507 tests), and production build passed, but the required browser gate is not evidenced: verification.json reports browser_passed=false and no screenshots or e2e log exists. The only feature tests cover mappings, aggregation, and generic bounds; they do not cover editable-target rejection, collision blocking, vertical limits, atomic camera/target no-op, mode scoping, preventDefault/no-scroll behavior, or App/Viewer integration. The implementation also lacks the contract-required focus/blur listeners for editable-target transitions; pressed keys are cleared only on editable keydown, window blur, visibility loss, mode exit, and cleanup. No operator notes or scope conflicts were supplied. Add positive and negative behavior-focused tests and obtain a passing browser/e2e result before handoff to visual-qa."
+      },
+      {
+        "at": "2026-09-07T18:39:53.860Z",
+        "agent": "engineer",
+        "outcome": "handoff",
+        "summary": "Implemented the walk-mode keyboard navigation in the approved Viewer/helper scope: added the pure walkNavigation contracts and focused regressions for WASD, Arrow, and PageUp/PageDown mappings, editable-target rejection, combined input normalization, transformed bounds, vertical clamping, and collision blocking. Viewer now scopes movement to walk mode, prevents default only for accepted walk keys, clears transient pressed keys on mode exit/blur/visibility/editable focus transitions, and translates camera and OrbitControls.target together with atomic no-op behavior when movement is blocked or out of bounds. Unit-level coverage and type/build checks are in place; browser/e2e validation remains the QA gate."
+      },
+      {
+        "at": "2026-09-07T18:41:10.546Z",
+        "agent": "qa",
+        "outcome": "revise",
+        "summary": "QA evidence is insufficient to approve this task: the recorded logs show typecheck, unit suite, and production build passed, but the browser gate is explicitly marked browser_passed=false with no Playwright log or screenshots in the task artifact. The implementation is missing contract-required coverage for editable-target rejection, mode scoping, preventDefault/no-scroll behavior, blocked-move atomic no-op, and vertical-limit validation; the task history also notes pressed-key cleanup must happen on editable focus/blur transitions and the current feature tests do not prove those behaviors. No operator notes or scope conflicts are present, so the fix remains in the approved engineer scope: add the missing behavior-focused tests and obtain a valid npm run test:e2e result before re-submitting for visual QA."
+      },
+      {
+        "at": "2026-09-07T18:41:59.170Z",
+        "agent": "engineer",
+        "outcome": "blocked",
+        "summary": "The approved engineer scope remains limited to Viewer + walkNavigation helper and focused tests, but this task is blocked by missing browser/e2e evidence: QA recorded typecheck, unit suite, and production build passing, yet the required browser gate is explicitly marked browser_passed=false with no Playwright log or screenshots. The contract still requires proof for editable-target rejection, mode scoping, preventDefault/no-scroll behavior, blocked-move atomic no-op, and vertical-limit validation in the browser gate; no operator notes or scope conflicts were supplied, so no scope expansion is approved. The task cannot be marked complete or handed off as successful without a valid npm run test:e2e result and the missing browser-level coverage."
+      }
+    ]
+  }
+]

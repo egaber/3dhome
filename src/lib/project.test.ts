@@ -104,7 +104,7 @@ describe('version-1 persistence and explicit copies', () => {
       enabled: false, width: 17.8, depth: 13.75, x: 14.2, z: -24.6, rotation: 145,
       groundHeight: 5.75, upperHeight: 4.1, basementDepth: 3.75, parapet: 0,
       roofEnabled: false, roofFloorHeight: 2.5, roofPeakHeight: 10.5,
-      firstFloorVariant: 'open-plan', storeys: 1,
+      firstFloorVariant: 'open-plan', storeys: 1, stairLayout: 'u-shaped',
     };
     state.buildings.south.width = 6.8;
     state.buildings.south.rotation = -125;

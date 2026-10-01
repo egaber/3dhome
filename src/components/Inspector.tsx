@@ -29,8 +29,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import {
-  ROOMS,
-  WALLS,
+  resolvedRooms,
+  resolvedWalls,
   buildingArea,
   floorAreaSchedule,
   resolvedOpenings,
@@ -53,6 +53,10 @@ import type {
 import { calculateSolar, resolveLocalDateTime, TIME_ZONE } from '../lib/solar';
 import { cn } from '../lib/utils';
 import { Button } from './ui/button';
+import { applyCadCommand, getWallApertures } from '../model/cad';
+import { addCadOpening } from '../lib/cadOpening';
+import { StairControls } from './StairControls';
+import './viewerCad.css';
 
 export interface InspectorProps {
   state: SimulationState;
@@ -80,11 +84,6 @@ const KIND_NAMES: Record<OpeningKind, string> = {
 };
 const KIND_OPTIONS = (['window', 'glazing', 'door', 'void'] as const)
   .map(value => ({ value, label: KIND_NAMES[value] }));
-const SORTED_ROOMS = [...ROOMS].sort((a, b) => (
-  UNITS.indexOf(a.unit) - UNITS.indexOf(b.unit)
-  || FLOORS.indexOf(a.floor) - FLOORS.indexOf(b.floor)
-  || a.name.localeCompare(b.name, 'he')
-));
 const TABS = [
   { id: 'sun', label: 'שמש', icon: Sun },
   { id: 'model', label: 'מבנה', icon: Building2 },
@@ -406,7 +405,9 @@ function SunPanel({
       setTimeError('התאריך או השעה אינם תקינים, או שהשעה אינה קיימת במעבר לשעון קיץ. בחרו זמן אחר; הערך הקודם נשמר.');
     }
   };
-  const room = ROOMS.find(item => item.id === selectedRoom);
+  const rooms = resolvedRooms(state).sort((a, b) => UNITS.indexOf(a.unit) - UNITS.indexOf(b.unit)
+    || FLOORS.indexOf(a.floor) - FLOORS.indexOf(b.floor) || a.name.localeCompare(b.name, 'he'));
+  const room = rooms.find(item => item.id === selectedRoom);
   const roomActive = !!room && state.buildings[room.unit].enabled
     && (room.floor !== 'first' || state.buildings[room.unit].storeys === 2);
   // Selection belongs to App, not SimulationState. Never substitute another room.
@@ -497,7 +498,7 @@ function SunPanel({
       </section>
 
       <section aria-labelledby={`${id}-room`}>
-        <SectionHeading id={`${id}-room`} icon={ChartColumn} title="ניתוח חדר" source={`${ROOMS.length} חדרים בתוכניות`} />
+        <SectionHeading id={`${id}-room`} icon={ChartColumn} title="ניתוח חדר" source={`${rooms.length} חדרים פעילים`} />
         <div className="field">
           <label className="field-label" htmlFor={`${id}-room-select`}>חדר לניתוח ולסיור</label>
           <select id={`${id}-room-select`} value={selectedRoom} aria-label="חדר לניתוח ולסיור"
@@ -505,7 +506,7 @@ function SunPanel({
             {!room && <option value={selectedRoom} disabled>בחרו חדר מתוך התוכנית</option>}
             {UNITS.flatMap(unit => FLOORS.map(floor => (
               <optgroup key={`${unit}-${floor}`} label={`${UNIT_NAMES[unit]} · ${FLOOR_NAMES[floor]}`}>
-                {SORTED_ROOMS.filter(item => item.unit === unit && item.floor === floor).map(item => (
+                {rooms.filter(item => item.unit === unit && item.floor === floor).map(item => (
                   <option key={item.id} value={item.id}>
                     {item.name}{!state.buildings[unit].enabled || (floor === 'first' && state.buildings[unit].storeys === 1) ? ' · אינו פעיל במודל' : ''}
                   </option>
@@ -553,6 +554,7 @@ function SunPanel({
 
 function ModelPanel({ state, onChange, selectedUnit, onSelectUnit }: Pick<InspectorProps,
   'state' | 'onChange' | 'selectedUnit' | 'onSelectUnit'>) {
+  const [cadError, setCadError] = useState('');
   const building = state.buildings[selectedUnit];
   const context = UNIT_NAMES[selectedUnit];
   const patch = (next: Partial<BuildingSettings>) => onChange({
@@ -587,6 +589,12 @@ function ModelPanel({ state, onChange, selectedUnit, onSelectUnit }: Pick<Inspec
         <p className="warning-note">הזזות וסיבובים קיצוניים עלולים ליצור חפיפה או לנתק את הקיר המשותף. אין כאן מניעת התנגשויות או בדיקת היתר.</p>
 
         <SectionHeading icon={Layers} title="קומות וגבהים" />
+        <StairControls state={state} unit={selectedUnit} fromFloor={building.storeys === 2 ? 'ground' : 'basement'}
+          onCommand={command => {
+            try { onChange(applyCadCommand(state, command)); setCadError(''); }
+            catch (cause) { setCadError(cause instanceof Error ? cause.message : 'לא ניתן לשנות מדרגות'); }
+          }} />
+        {cadError && <p role="alert" className="cad-error">{cadError}</p>}
         <SelectField label="קומות מעל הקרקע" context={context} value={String(building.storeys)}
           options={[{ value: '1', label: 'קומת קרקע בלבד' }, { value: '2', label: 'קרקע + קומה ראשונה' }]}
           onChange={value => patch({ storeys: value === '1' ? 1 : 2 })} />
@@ -676,18 +684,21 @@ function OpeningsPanel({
   const externalFloor = externalOpening?.floor;
   const [floor, setFloor] = useState<FloorId>(() => externalFloor ?? 'ground');
   const [addWallId, setAddWallId] = useState('');
+  const [error, setError] = useState('');
   useEffect(() => {
     if (externalFloor) setFloor(externalFloor);
   }, [selectedOpening, selectedUnit, externalFloor]);
 
-  const walls = WALLS.filter(wall => wall.unit === selectedUnit && wall.floor === floor);
+  const activeWalls = resolvedWalls(state);
+  const walls = activeWalls.filter(wall => wall.unit === selectedUnit && wall.floor === floor);
   const openings = allOpenings.filter(opening => opening.unit === selectedUnit && opening.floor === floor);
   // An effective first selection avoids calling parent setters during render.
   const opening = openings.find(item => item.id === selectedOpening) ?? openings[0];
-  const wall = opening ? WALLS.find(item => item.id === opening.wallId) : undefined;
+  const wall = opening ? activeWalls.find(item => item.id === opening.wallId) : undefined;
   const building = state.buildings[selectedUnit];
   const length = wall ? actualWallLength(wall, state) : 0;
   const height = wall ? wallHeight(wall, building) : 0;
+  const aperture = wall && opening ? getWallApertures(wall, state).find(a => a.id === opening.id) : undefined;
   const removed = !!opening && (opening.width === 0 || opening.height === 0);
   const hasOverride = !!opening && Object.keys(state.openings[opening.id] ?? {}).length > 0;
   const addWall = walls.find(item => item.id === addWallId)
@@ -698,9 +709,8 @@ function OpeningsPanel({
 
   const patchOpening = (next: Partial<OpeningSpec>) => {
     if (!opening) return;
-    onChange({ ...state, openings: {
-      ...state.openings, [opening.id]: { ...state.openings[opening.id], ...next },
-    } });
+    try { onChange(applyCadCommand(state, { type: 'opening', id: opening.id, patch: next })); setError(''); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'העריכה לא בוצעה'); }
   };
   const restoreOpening = () => {
     if (!opening) return;
@@ -710,41 +720,21 @@ function OpeningsPanel({
   };
   const deleteOpening = () => {
     if (!opening) return;
-    if (opening.source === 'plan') {
-      patchOpening({ width: 0, height: 0 });
-      return;
-    }
-    const overrides = { ...state.openings };
-    delete overrides[opening.id];
-    onChange({ ...state, openings: overrides, addedOpenings: state.addedOpenings.filter(item => item.id !== opening.id) });
-    onSelectOpening(openings.find(item => item.id !== opening.id)?.id ?? null);
+    patchOpening({ width: 0, height: 0 });
   };
   const addOpening = () => {
     if (!addWall) return;
-    const added: OpeningSpec = {
-      id: `added-${crypto.randomUUID()}`,
-      // Use the unit-specific PlanWall.id, not the unsplit PDF sourceId.
-      wallId: addWall.id,
-      label: `חלון נוסף ${state.addedOpenings.length + 1} · ${FLOOR_NAMES[floor]}`,
-      unit: selectedUnit,
-      floor,
-      kind: 'window',
-      position: 0.5,
-      width: 1.2,
-      height: 1.35,
-      sill: 0.95,
-      source: 'added',
-      overhang: 0,
-      open: false,
-      shutter: false,
-    };
-    onChange({ ...state, addedOpenings: [...state.addedOpenings, added] });
-    onSelectOpening(added.id);
+    try {
+      const id = `added-${crypto.randomUUID()}`;
+      const next = addCadOpening(state, id, addWall.id, { label: `חלון נוסף ${state.addedOpenings.length + 1} · ${FLOOR_NAMES[floor]}` });
+      onChange(next); onSelectOpening(id); setError('');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'לא ניתן להוסיף פתח בקיר שנבחר'); }
   };
 
   return (
     <>
       <SectionHeading icon={DoorOpen} title="פתחים בקירות" source="פתחים חודרים" />
+      {error && <p role="alert" className="cad-error">{error}</p>}
       <UnitPicker selectedUnit={selectedUnit} onSelectUnit={unit => {
         onSelectUnit(unit);
         onSelectOpening(allOpenings.find(item => item.unit === unit && item.floor === floor)?.id ?? null);
@@ -774,6 +764,8 @@ function OpeningsPanel({
         <div className="field-grid">
           <Stat label="אורך הקיר בפועל" value={`${numberLabel(length)} מ׳`} />
           <Stat label="גובה הקיר בפועל" value={`${numberLabel(height)} מ׳`} />
+          <Stat label="רוחב הפתח הגלוי" value={`${numberLabel(aperture && wall ? aperture.width * wallScale(wall, state) : 0)} מ׳`} />
+          <Stat label="גובה הפתח הגלוי" value={`${numberLabel(aperture?.height ?? 0)} מ׳`} />
         </div>
         {removed ? <p className="warning-note">הפתח הוסר באמצעות רוחב וגובה אפס. אפשר לשחזר את פתח המקור בלי לשנות קירות אחרים.</p> : <>
           <SelectField label="סוג הפתח" context={context} value={opening.kind} options={KIND_OPTIONS}
@@ -817,7 +809,7 @@ function OpeningsPanel({
         <Button variant="secondary" onClick={addOpening} disabled={!addWall}>
           <Plus size={16} aria-hidden="true" /> הוספת חלון בקיר הנבחר
         </Button>
-        <p className="small-note">ברירת מחדל: מרכז הקיר, רוחב 1.20 מ׳, גובה 1.35 מ׳ ואדן 0.95 מ׳. בקיר קצר או נמוך הפתח יוגבל לגבולות הקיר; כל המידות ניתנות לעריכה.</p>
+        <p className="small-note">ברירת מחדל: מרכז הקיר, רוחב 1.20 מ׳, גובה 1.35 מ׳ ואדן 0.95 מ׳. נדרש קיר פעיל עם מקום לפתח גלוי; עד 200 תוספות כולל פתחים שנמחקו.</p>
       </section>
     </>
   );

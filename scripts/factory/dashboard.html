@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Local Software Factory</title>
+  <script nonce="__CSP_NONCE__">
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+      const theme =
+        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style nonce="__CSP_NONCE__">
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #919191;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+      --cp-accent: #b11f4b;
+      --cp-accent-hover: #9a1a41;
+      --cp-accent-soft: rgba(177, 31, 75, 0.08);
+      --cp-accent-fg: #ffffff;
+      --cp-success: #16a34a;
+      --cp-danger: #dc2626;
+      --cp-warning: #f59e0b;
+      --cp-link: #0078d4;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-overlay: rgba(255, 255, 255, 0.8);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.55);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cp-bg: #3d3b3a;
+      --cp-bg-elevated: #343231;
+      --cp-surface: #292929;
+      --cp-surface-soft: #2e2e2e;
+      --cp-border: #474747;
+      --cp-border-strong: #5f5f5f;
+      --cp-text: #dedede;
+      --cp-text-muted: #919191;
+      --cp-text-soft: #b0b0b0;
+      --cp-accent: #fd8ea1;
+      --cp-accent-hover: #fb7b91;
+      --cp-accent-soft: rgba(253, 142, 161, 0.14);
+      --cp-accent-fg: #1a1a1a;
+      --cp-success: #4ade80;
+      --cp-danger: #f87171;
+      --cp-warning: #fbbf24;
+      --cp-link: #4da6ff;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      --cp-overlay: rgba(41, 41, 41, 0.88);
+      --cp-panel: rgba(41, 41, 41, 0.72);
+      --cp-panel-strong: rgba(41, 41, 41, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.04);
+      --cp-highlight: rgba(253, 142, 161, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--cp-bg); color: var(--cp-text); font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif; font-size: 14px; line-height: 1.5; }
+    button, input, textarea, select { font: inherit; }
+    button { cursor: pointer; min-height: 40px; padding: 8px 12px; color: var(--cp-text); background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 10px; }
+    button:hover:not(:disabled) { background: var(--cp-surface-soft); border-color: var(--cp-border-strong); }
+    button.primary { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
+    button.primary:hover:not(:disabled) { background: var(--cp-accent-hover); }
+    button.danger { color: var(--cp-danger); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    :focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 3px; }
+    a { color: var(--cp-link); }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(24px, 3vw, 32px); letter-spacing: -.8px; line-height: 1.2; }
+    h2 { font-size: 18px; } h3 { font-size: 15px; }
+    .muted, small { color: var(--cp-text-muted); } .eyebrow { color: var(--cp-accent); font-size: 11px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; }
+    .shell { max-width: 1700px; margin: 0 auto; padding: 28px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 24px; }
+    .brand { display: flex; align-items: center; gap: 16px; }
+    .brand-icon { width: 52px; height: 52px; flex-shrink: 0; display: grid; place-items: center; background: var(--cp-accent); color: var(--cp-accent-fg); border-radius: 16px; font-size: 26px; }
+    .top-actions, .actions, .section-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .section-head { justify-content: space-between; margin-bottom: 16px; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 8px; font-size: 12px; background: var(--cp-surface-soft); color: var(--cp-text-muted); white-space: nowrap; }
+    .badge.active { color: var(--cp-accent); background: var(--cp-accent-soft); }
+    .badge.success { color: var(--cp-success); } .badge.error { color: var(--cp-danger); }
+    #connection { border: 1px solid var(--cp-border); }
+    .metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 16px; margin-bottom: 20px; }
+    .metric, .panel { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px; }
+    .metric { padding: 18px 20px; } .metric strong { display: block; font-size: 24px; font-weight: 600; margin: 4px 0; overflow-wrap: anywhere; }
+    .metric .label { color: var(--cp-text-muted); font-size: 12px; }
+    .pipeline { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 24px; list-style: none; padding: 0; }
+    .pipeline li { padding: 6px 10px; border: 1px solid var(--cp-border); border-radius: 10px; background: var(--cp-bg-elevated); font-size: 12px; color: var(--cp-text-muted); }
+    .pipeline li.current { border-color: var(--cp-accent); background: var(--cp-accent-soft); color: var(--cp-accent); font-weight: 600; }
+    .layout { display: grid; grid-template-columns: 310px minmax(0,1fr) 300px; gap: 20px; align-items: start; }
+    .panel { min-width: 0; padding: 20px; } .stack { display: grid; gap: 20px; min-width: 0; }
+    input, textarea, select { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--cp-border); border-radius: 10px; color: var(--cp-text); background: var(--cp-surface); }
+    textarea { resize: vertical; min-height: 96px; }
+    label { display: grid; gap: 6px; font-size: 12px; font-weight: 600; }
+    label.check { display: flex; align-items: center; gap: 8px; font-weight: 400; } input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--cp-accent); }
+    .field-row { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+    form { display: grid; gap: 14px; } fieldset { margin: 0; padding: 0; border: 0; min-width: 0; display: grid; gap: 14px; }
+    .queue-filters { display: grid; gap: 8px; margin-bottom: 16px; }
+    .task-list { display: grid; gap: 8px; max-height: 65vh; overflow-y: auto; padding: 3px; margin: -3px; }
+    .task-card { display: grid; width: 100%; gap: 8px; text-align: start; padding: 12px; border-radius: 12px; }
+    .task-card[aria-pressed="true"] { border-color: var(--cp-accent); background: var(--cp-accent-soft); }
+    .task-title { font-weight: 600; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+    .task-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--cp-text-muted); font-size: 11px; }
+    #selected-title { font-size: 20px; overflow-wrap: anywhere; } #description { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .detail-block { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--cp-border); }
+    .criteria { margin: 12px 0 0; padding-inline-start: 20px; } .criteria li { padding: 4px 0; overflow-wrap: anywhere; }
+    summary { cursor: pointer; font-weight: 600; padding: 8px 0; } details form { margin-top: 12px; }
+    pre { margin: 12px 0 0; padding: 12px; border: 1px solid var(--cp-border); background: var(--cp-surface-soft); border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 Consolas, "Courier New", Courier, monospace; max-height: 420px; overflow-y: auto; }
+    .timeline, .notes { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 12px; }
+    .timeline li { border-inline-start: 2px solid var(--cp-border); padding-inline-start: 12px; }
+    .timeline p, .notes p { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; }
+    .notes li { background: var(--cp-surface-soft); border-radius: 10px; padding: 12px; }
+    .timeline small { display: block; } .timeline .error { color: var(--cp-danger); }
+    .callout { padding: 12px 16px; border: 1px solid var(--cp-border); border-radius: 10px; background: var(--cp-accent-soft); margin-bottom: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    #error { color: var(--cp-danger); } #message { color: var(--cp-text); }
+    .hint { color: var(--cp-text-muted); font-size: 12px; } .empty { padding: 16px 0; color: var(--cp-text-muted); }
+    .artifact-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin-top: 12px; }
+    .artifact-grid img { display: block; max-width: 100%; max-height: 220px; border: 1px solid var(--cp-border); border-radius: 10px; }
+    dialog { width: min(600px,calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; color: var(--cp-text); background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px; padding: 24px; }
+    dialog::backdrop { background: var(--cp-overlay); }
+    footer { margin-top: 24px; font-size: 12px; color: var(--cp-text-muted); }
+    [hidden] { display: none !important; }
+    @media (max-width: 1250px) { .layout { grid-template-columns: 290px minmax(0,1fr); } .activity-column { grid-column: 1/-1; } }
+    @media (max-width: 720px) { .shell { padding: 16px; } .metrics { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; } .metric { padding: 12px; } .metric strong { font-size: 20px; } .layout { grid-template-columns: minmax(0,1fr); gap: 16px; } .task-list { max-height: 300px; } .field-row { grid-template-columns: minmax(0,1fr); } .panel { padding: 16px; } .brand-icon { display: none; } .top-actions { width: 100%; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand"><div class="brand-icon" aria-hidden="true">⚒</div><div><p class="eyebrow">Local engineering workspace</p><h1>Software factory</h1><p class="muted" id="project">Connecting to your workspace…</p></div></div>
+      <div class="top-actions"><span id="connection" class="badge" role="status">Connecting…</span><button id="theme" aria-label="Toggle light or dark theme">◐ Theme</button></div>
+    </header>
+    <div id="error" class="callout" role="alert" hidden></div><div id="message" class="callout" role="status" hidden></div>
+    <section class="metrics" aria-label="Factory status">
+      <div class="metric"><span class="label">WORKER</span><strong id="worker-state">—</strong><span class="hint" id="heartbeat">Waiting for heartbeat</span></div>
+      <div class="metric"><span class="label">ACTIVE STAGE</span><strong id="active-role">—</strong><span class="hint" id="active-progress">No active task</span></div>
+      <div class="metric"><span class="label">REPAIR ATTEMPTS</span><strong id="repairs">—</strong><span class="hint">Bounded retries, never silent loops</span></div>
+      <div class="metric"><span class="label">AGENT CALLS TODAY</span><strong id="daily-calls">—</strong><span class="hint" id="credit-limit">UTC day · Copilot quota applies</span></div>
+    </section>
+    <section class="section-head" aria-label="Worker controls">
+      <div class="actions"><button data-control="start" id="start-worker" class="primary">Start worker</button><button data-control="pause" id="pause-worker">Pause</button><button data-control="resume" id="resume-worker">Resume</button><button data-control="stop" id="stop-worker" class="danger">Stop worker</button></div>
+      <p id="process" class="hint" role="status">No process information yet</p>
+    </section>
+    <div id="pause-reason" class="callout" hidden></div>
+    <ol class="pipeline" id="pipeline" aria-label="Review pipeline"></ol>
+    <div class="layout">
+      <section class="panel" aria-labelledby="queue-heading"><div class="section-head"><h2 id="queue-heading">Task queue</h2><button id="new-task" class="primary">+ New task</button></div>
+        <div class="queue-filters"><label>Search tasks<input id="search" type="search" placeholder="ID, title, or agent"></label><label>Show<select id="filter"><option value="all">All tasks</option><option value="enabled">Enabled tasks</option><option value="Blocked">Blocked</option><option value="Done">Done</option></select></label></div>
+        <div id="task-list" class="task-list" aria-label="Tasks"></div>
+      </section>
+      <div class="stack">
+        <section class="panel" id="task-detail" aria-labelledby="selected-title">
+          <div class="section-head"><span id="selected-meta" class="eyebrow">Select a task</span><span id="selected-status" class="badge">—</span></div>
+          <h2 id="selected-title" dir="auto">Your task details will appear here</h2><p id="description" class="muted" dir="auto"></p>
+          <div class="actions detail-block"><button id="move-up">↑ Priority</button><button id="move-down">↓ Priority</button><button id="replan">Replan task</button><button id="retry">Retry after review</button></div>
+          <div class="detail-block"><h3>Acceptance criteria</h3><ul class="criteria" id="criteria"></ul></div>
+          <details class="detail-block" id="edit-panel"><summary>Edit task</summary><p id="edit-help" class="hint">Edit queued or blocked work. To change active scope, stop the worker and replan first.</p><p class="callout" id="draft-warning" hidden>Remote changes detected. Your draft is preserved. Reload the task before saving.</p>
+            <form id="edit-form"><fieldset id="edit-fields"><label>Title<input id="edit-title" required maxlength="500" dir="auto"></label><label>Description<textarea id="edit-description" maxlength="8000" dir="auto"></textarea></label>
+              <div class="field-row"><label>Kind<select id="edit-kind"><option value="feature">Feature</option><option value="bug">Bug</option><option value="issue">Issue</option></select></label><label>Maximum repairs<input id="edit-retries" type="number" min="0" max="3" required></label></div>
+              <label>Acceptance criteria · one per line<textarea id="edit-criteria" dir="auto"></textarea></label><label>Dependencies · comma-separated task IDs<input id="edit-dependencies" placeholder="TASK-001, TASK-002"></label>
+              <label class="check"><input id="edit-enabled" type="checkbox">Enable automation for this task (uses Copilot quota)</label></fieldset>
+              <div class="actions"><button id="save-task" class="primary" type="submit">Save changes</button><button id="reload-task" type="button">Reload task</button><span id="draft-state" class="hint"></span></div>
+            </form>
+          </details>
+          <details class="detail-block"><summary>Architectural contract</summary><pre id="contract" dir="auto">No contract yet.</pre></details>
+          <details class="detail-block" open><summary>Review history</summary><ol class="timeline" id="history"></ol></details>
+          <details class="detail-block"><summary>Verification &amp; screenshots</summary><div id="evidence"></div></details>
+        </section>
+        <section class="panel" aria-labelledby="notes-heading"><div class="section-head"><h2 id="notes-heading">Operator notes</h2><span class="badge">Next-stage context</span></div>
+          <p class="hint">Notes do not interrupt an agent mid-response. They are passed to upcoming stages; final review is repeated if a new note arrives while it runs. Notes on finished work do not reopen it.</p>
+          <form id="note-form" class="detail-block"><label>Note for<select id="note-target"><option value="task">Selected task</option><option value="all">All tasks</option></select></label><label>Your note<textarea id="note-text" required maxlength="4000" placeholder="Clarify a requirement, flag a concern, or guide the next review…" dir="auto"></textarea></label><div class="actions"><button id="send-note" class="primary" type="submit">Add note</button><span class="hint">Saved locally. Do not include secrets.</span></div></form>
+          <ol class="notes" id="notes"></ol>
+        </section>
+      </div>
+      <aside class="stack activity-column"><section class="panel"><div class="section-head"><h2>Live activity</h2><span class="badge active">1s refresh</span></div><p class="hint">Public tool activity and check output. Private reasoning and raw prompts are not shown.</p><ol class="timeline" id="activity"></ol><p id="latest-run" class="hint detail-block"></p></section>
+        <section class="panel"><h3>Safe operator controls</h3><p class="hint detail-block">Pause lets the current stage finish. Stop terminates it and preserves partial edits. Closing this dashboard or terminal monitor does not stop the worker.</p><p class="hint detail-block">Completion stays behind test, visual, and review gates. There is no “force Done” action and no automatic deployment.</p></section>
+      </aside>
+    </div>
+    <footer>Loopback-only operator interface · No hosted backend added to the house app · Live terminal: <strong>npm run factory:live</strong></footer>
+  </main>
+  <dialog id="create-dialog" aria-labelledby="create-heading"><div class="section-head"><h2 id="create-heading">New backlog task</h2><button id="close-create" aria-label="Close new task dialog">✕</button></div><form id="create-form"><label>Task title<input id="create-title" required maxlength="500" dir="auto"></label><label>Description<textarea id="create-description" maxlength="8000" dir="auto"></textarea></label><label>Kind<select id="create-kind"><option value="feature">Feature</option><option value="bug">Bug</option><option value="issue">Issue</option></select></label><label>Acceptance criteria · one per line<textarea id="create-criteria" dir="auto"></textarea></label><label class="check"><input id="create-enabled" type="checkbox">Enable automatically (uses Copilot quota)</label><p class="hint">Unchecked tasks are saved as disabled drafts. The PM will refine enabled work.</p><p id="create-error" role="alert" class="hint" hidden></p><button id="create-submit" class="primary" type="submit">Create task</button></form></dialog>
+  <script type="module" src="/client.js"></script>
+</body>
+</html>
