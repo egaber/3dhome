@@ -68,6 +68,9 @@ export function CadProperties({ state, selection, units, onCommand, onSelect, on
       const aperture = getWallApertures(host, state).find(a => a.id === opening.id);
       const scale = length / Math.hypot(host.b[0] - host.a[0], host.b[1] - host.a[1]);
       return <>
+        {opening.kind === 'door' && <label>כיוון פתיחת הדלת<select aria-label="כיוון פתיחת הדלת" value={opening.swing ?? 'positive'}
+          onChange={event => onCommand({ type: 'opening', id: opening.id, patch: { swing: event.target.value === 'negative' ? 'negative' : 'positive' } }, 'שינוי כיוון פתיחת דלת')}>
+          <option value="positive">צד א׳ של הקיר</option><option value="negative">צד ב׳ של הקיר</option></select></label>}
         <p className="small-note">מידות מבוקשות; הגאומטריה האפקטיבית מוגבלת לקיר. {aperture ? `רוחב גלוי ${lengthText(aperture.width * scale, units)}` : 'הפתח אינו גלוי במידות הנוכחיות.'}</p>
         <NumericDraftForm skipUnchanged={kind === opening.kind} units={units} fields={[{ name: 'at', label: 'מרחק מקצה A', value: opening.position * length }, { name: 'width', label: 'רוחב פתח', value: opening.width }, { name: 'height', label: 'גובה פתח', value: opening.height }, { name: 'sill', label: 'גובה אדן', value: opening.sill }]}
           onApply={v => onCommand({ type: 'opening', id: opening.id, patch: { position: v.at / length, width: v.width, height: v.height, sill: v.sill, kind } }, 'עריכת פתח')}>
@@ -99,14 +102,16 @@ export function FurniturePalette({ state, unit, floor, units, center, onCommand,
   state: SimulationState; unit: UnitId; floor: FloorId; units: DisplayUnit; center: Vec2;
   onCommand: (command: CadCommand, label: string) => void; onSelect: (selection: CadSelection) => void;
 }) {
-  const [kind, setKind] = useState<FurnitureKind>('armchair');
+  const [kind, setKind] = useState<FurnitureKind | 'round-dining-table'>('armchair');
+  const round = kind === 'round-dining-table';
   return <section aria-label="הוספת ריהוט">
     <p className="small-note">ריהוט ומכשירים סכמטיים · עד 200 תוספות · מידות מקומיות 0.2–10 מ׳, גובה 0.1–3 מ׳</p>
-    <label>פריט להוספה<select value={kind} onChange={e => setKind(e.target.value as FurnitureKind)}>{FURNITURE_KINDS.map(k => <option key={k} value={k}>{FURNITURE_NAMES[k]}</option>)}</select></label>
-    <NumericDraftForm units={units} submitLabel="הוספת פריט" fields={[{ name: 'x', label: 'מיקום חדש X', value: center[0] }, { name: 'z', label: 'מיקום חדש Z', value: center[1] }, { name: 'width', label: 'רוחב חדש', value: .6 }, { name: 'depth', label: 'עומק חדש', value: .6 }, { name: 'height', label: 'גובה חדש', value: .9 }]}
+    <label>פריט להוספה<select value={kind} onChange={e => setKind(e.target.value as FurnitureKind | 'round-dining-table')}>{FURNITURE_KINDS.map(k => <option key={k} value={k}>{FURNITURE_NAMES[k]}</option>)}<option value="round-dining-table">שולחן אוכל עגול</option></select></label>
+    <NumericDraftForm key={kind} units={units} submitLabel="הוספת פריט" fields={[{ name: 'x', label: 'מיקום חדש X', value: center[0] }, { name: 'z', label: 'מיקום חדש Z', value: center[1] }, { name: 'width', label: round ? 'קוטר חדש' : 'רוחב חדש', value: round ? 1.3 : .6 }, ...(!round ? [{ name: 'depth', label: 'עומק חדש', value: .6 }] : []), { name: 'height', label: 'גובה חדש', value: round ? .76 : .9 }]}
       onApply={v => {
         const id = `cad-item-${crypto.randomUUID()}`;
-        const item = { id, kind, unit, floor, center: inversePlanPoint([v.x, v.z], unit, state), width: v.width, depth: v.depth, height: v.height, rotation: 0, source: 'added' as const };
+        const item = { id, kind: round ? 'dining-table' as const : kind as FurnitureKind, unit, floor, center: inversePlanPoint([v.x, v.z], unit, state),
+          width: v.width, depth: round ? v.width : v.depth, height: v.height, rotation: 0, source: 'added' as const, ...(round ? { shape: 'round' as const } : {}) };
         const scales = furnitureScales(item, state); item.width /= scales[0]; item.depth /= scales[1];
         const command: CadCommand = { type: 'add-furniture', item };
         // Ensure the selection is changed only after the atomic validator accepts the item.

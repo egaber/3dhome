@@ -86,7 +86,8 @@ test('portable backup embeds models and restores into an empty cache without ass
   const download = await downloading, path = info.outputPath('portable-backup.json'); await download.saveAs(path);
   const buffer = await readFile(path), bundle = JSON.parse(buffer.toString());
   expect(bundle.resources.files['catalog/washer.glb']).toMatch(/^data:/);
-  expect(Object.keys(bundle.resources.files).length).toBe(18);
+  const credits = JSON.parse(await readFile(new URL('../public/assets/realism/credits.json', import.meta.url), 'utf8')) as { files: Record<string, string> };
+  expect(Object.keys(bundle.resources.files).sort()).toEqual([...Object.keys(credits.files), 'catalog/washer.glb'].sort());
   await page.evaluate(async () => {
     localStorage.clear();
     await new Promise<void>((resolve, reject) => { const r = indexedDB.deleteDatabase('dori-realism-assets-v1'); r.onsuccess = () => resolve(); r.onerror = () => reject(r.error); r.onblocked = () => reject(new Error('Database still open')); });

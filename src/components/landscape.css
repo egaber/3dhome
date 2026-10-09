@@ -1,0 +1,20 @@
+.landscape-layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 20px; }
+.landscape-layout aside { min-height: 0; max-height: 65dvh; overflow: auto; padding: 4px; }
+.landscape-layout aside > .button { width: 100%; margin-bottom: 12px; }
+.landscape-plan { width: 100%; height: 62dvh; min-height: 320px; direction: ltr; background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px; touch-action: none; }
+.landscape-plan > line { stroke: var(--cp-text-muted); stroke-width: .1; pointer-events: none; }
+.landscape-site { fill: var(--cp-success); fill-opacity: .08; stroke: var(--cp-border-strong); stroke-width: .05; }
+.landscape-house { fill: var(--cp-surface); stroke: var(--cp-border); stroke-width: .1; }
+.landscape-well { fill: var(--cp-border); fill-opacity: .4; stroke: var(--cp-border-strong); stroke-width: .025; }
+.landscape-plan g[role=button] { cursor: grab; }
+.landscape-plan g[role=button] > circle { fill: var(--cp-surface); stroke: var(--cp-success); stroke-width: .06; }
+.landscape-plan g[role=button] svg { stroke: var(--cp-success); }
+.landscape-plan g.selected > circle { stroke: var(--cp-accent); stroke-width: .12; }
+.landscape-properties > small { display: block; margin-block: 12px; line-height: 1.6; color: var(--cp-text-muted); }
+.landscape-properties > p[role=alert] { color: var(--cp-danger); }
+.landscape-plan g:focus-visible > circle { stroke: var(--cp-accent); stroke-width: .15; }
+@media (max-width: 700px) {
+  .landscape-layout { grid-template-columns: 1fr; }
+  .landscape-plan { grid-row: 1; height: 36dvh; min-height: 230px; }
+  .landscape-layout aside { max-height: none; }
+}

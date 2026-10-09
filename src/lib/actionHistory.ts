@@ -11,6 +11,7 @@ export interface ActionHistoryState {
   group: { label?: string } | null;
 }
 export type HistoryAction =
+  | { type: 'reset'; state: SimulationState }
   | { type: 'change'; update: StateUpdate; label?: string }
   | { type: 'begin'; label?: string }
   | { type: 'end' }
@@ -63,6 +64,7 @@ export function finishHistory(history: ActionHistoryState): ActionHistoryState {
 }
 
 export function historyReducer(history: ActionHistoryState, action: HistoryAction): ActionHistoryState {
+  if (action.type === 'reset') return createHistory(action.state);
   if (action.type === 'change') {
     const next = typeof action.update === 'function' ? action.update(history.present) : action.update;
     if (sameState(history.present, next)) return history;

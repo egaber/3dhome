@@ -4,13 +4,15 @@ import type { FurniturePart } from '../model/furnitureParts';
 
 /** CC0 source maps, vendored at 1K. No live third-party requests in the viewer. */
 export const SURFACE_ASSETS = [
-  { id: 'wood_floor', name: 'עץ טבעי', author: 'Dimitrios Savva', metres: 2, strength: .35 },
-  { id: 'fabric_pattern_07', name: 'בד ארוג', author: 'Rob Tuytel', metres: .3, strength: .25 },
-  { id: 'marble_01', name: 'שיש', author: 'Rob Tuytel', metres: 1.5, strength: .15 },
-  { id: 'plastered_wall', name: 'טיח', author: 'Amal Kumar', metres: 2, strength: .2 },
-  { id: 'floor_tiles_06', name: 'אריחי רצפה', author: 'Rob Tuytel', metres: 2, strength: .3 },
+  { id: 'wood_floor', name: 'עץ טבעי', author: 'Dimitrios Savva', metres: 2, strength: .35, channels: ['color', 'normal', 'roughness'] },
+  { id: 'fabric_pattern_07', name: 'בד ארוג', author: 'Rob Tuytel', metres: .3, strength: .25, channels: ['color', 'normal', 'roughness'] },
+  { id: 'marble_01', name: 'שיש', author: 'Rob Tuytel', metres: 1.5, strength: .15, channels: ['color', 'normal', 'roughness'] },
+  { id: 'plastered_wall', name: 'טיח', author: 'Amal Kumar', metres: 2, strength: .2, channels: ['color', 'normal', 'roughness'] },
+  { id: 'floor_tiles_06', name: 'אריחי רצפה', author: 'Rob Tuytel', metres: 2, strength: .3, channels: ['color', 'normal', 'roughness'] },
+  { id: 'grass004', name: 'דשא חוץ', author: 'Fur+Setting archive', metres: 1.4, strength: .045, channels: ['color', 'height', 'roughness'] },
 ] as const;
 export type SurfaceId = typeof SURFACE_ASSETS[number]['id'];
+export type SurfaceChannel = typeof SURFACE_ASSETS[number]['channels'][number];
 export type Finish = 'wood' | 'fabric' | 'stone' | 'plaster' | 'tile' | 'ceramic' | 'metal' | 'paint' | 'glass' | 'dark';
 export const MODEL_ASSETS = [
   { id: 'SheenWoodLeatherSofa', kind: 'sofa', name: 'ספת בד, עור ועץ', license: 'CC BY 4.0', author: 'Eric Chadwick / DGG; original: Fran Calvente',
@@ -20,7 +22,7 @@ export const MODEL_ASSETS = [
 ] as const;
 
 export function assetUrl(file: string): string { return `${import.meta.env.BASE_URL}assets/realism/${file}`; }
-export function surfaceUrl(id: SurfaceId, map: 'color' | 'normal' | 'roughness'): string { return assetUrl(`${id}-${map}.jpg`); }
+export function surfaceUrl(id: SurfaceId, map: SurfaceChannel): string { return assetUrl(`${id}-${map}.jpg`); }
 
 const surfaces: Partial<Record<Finish, SurfaceId>> = {
   wood: 'wood_floor', fabric: 'fabric_pattern_07', stone: 'marble_01', plaster: 'plastered_wall', tile: 'floor_tiles_06',
@@ -52,12 +54,14 @@ export function furnitureFinish(kind: FurnitureKind, tone: FurniturePart['tone']
     case 'sofa': case 'armchair': return 'fabric';
     case 'bed': return tone === 'detail' ? 'wood' : 'fabric';
     case 'chair': return tone === 'body' ? 'fabric' : 'wood';
-    case 'coffee-table': case 'dining-table': return 'wood';
+    case 'coffee-table': case 'dining-table': case 'desk': case 'wardrobe': case 'nightstand': case 'bookcase': case 'bench': case 'tv-console': return 'wood';
     case 'kitchen-unit': case 'kitchen-island': return tone === 'surface' ? 'stone' : tone === 'detail' ? 'wood' : 'paint';
     case 'sink': return 'metal';
     case 'basin': case 'toilet': return tone === 'detail' ? 'metal' : 'ceramic';
-    case 'shower': return 'ceramic';
-    case 'fridge': case 'dishwasher': return tone === 'surface' ? 'dark' : 'metal';
+    case 'shower': case 'bathtub': return 'ceramic';
+    case 'vanity': return tone === 'surface' ? 'stone' : 'wood';
+    case 'pendant': return tone === 'surface' ? 'ceramic' : 'metal';
+    case 'fridge': case 'dishwasher': case 'oven-tower': case 'washer-dryer': return tone === 'surface' ? 'dark' : 'metal';
     case 'cooktop': return tone === 'surface' ? 'metal' : 'dark';
   }
 }

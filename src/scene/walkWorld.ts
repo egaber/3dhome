@@ -1,10 +1,12 @@
-import { Triangle, Vector3 } from 'three';
+import { Box3, Triangle, Vector3 } from 'three';
 import polygonClipping from 'polygon-clipping';
 import type { Polygon } from 'polygon-clipping';
 import { buildWalkColliders } from '../lib/firstPersonNavigation';
 import { supportContains, walkContactSupports, WALK_SKIN, type WalkSupport, type WalkWorld, type FloorLimit } from '../lib/supportedWalk';
-import { getFloorLevels, resolveStairGeometry } from '../model/cad';
-import { SITE, trueWorldPoint } from '../model/plans';
+import { getFloorLevels, modelWorldPoint, resolveStairGeometry, stairPartOrder } from '../model/cad';
+import { SITE, floorElevation, planPoint, resolvedFurniture, resolvedOpenings, trueWorldPoint } from '../model/plans';
+import { rotatePlanPoint } from '../model/rotation';
+import { resolvedLandscape } from '../model/landscape';
 import type { SimulationState } from '../model/types';
 import type { Architecture, MeshMeta } from './architecture';
 
@@ -35,46 +37,51 @@ function join(a: MutableSupport, b: MutableSupport): void {
 
 /** One owned immutable-by-contract snapshot. No meshes/materials/state references
  * survive disposal. Visual cutaway/isolation does not remove physical blockers. */
-export function buildWalkWorld(state: SimulationState, architecture: Architecture): WalkWorld | null {
+export function buildWalkWorld(state: SimulationState, architecture: Architecture, furnished = false): WalkWorld | null {
   if (!Number.isFinite(state.northBearing)) return null;
   architecture.group.updateWorldMatrix(true, true);
-  const meshes = [...new Set([...architecture.blockers, ...architecture.measurementTargets.filter(m => m.userData.role === 'balcony')])];
+  const closedGlass = new Set(furnished ? resolvedOpenings(state).filter(opening => !opening.open && ['glazing', 'window'].includes(opening.kind)).map(opening => opening.id) : []);
+  const meshes = [...new Set([...architecture.blockers, ...architecture.measurementTargets.filter(m => ['balcony', 'stair-opening-glass'].includes(m.userData.role)
+    || furnished && ['well-grate', 'opening-leaf'].includes(m.userData.role) || closedGlass.has(m.userData.openingId) && m.userData.opaque === false)])];
   const snapshots = buildWalkColliders(meshes);
   if (snapshots.some(c => c.triangles.some(t => [...t.a.toArray(), ...t.b.toArray(), ...t.c.toArray()].some(n => !Number.isFinite(n))))) return null;
   const supports: MutableSupport[] = [];
   const identities = new Map<string, number>();
+  const accessibleRoofs = new Set((['north', 'south'] as const).filter(unit => resolveStairGeometry(state, unit, 'first')));
   const colliders = snapshots.map((snapshot, index) => {
     const meta = meshes[index].userData as MeshMeta;
     const identity = `${meta.role ?? 'solid'}:${meta.unit ?? 'site'}:${meta.floor ?? ''}:${meta.stairId ?? meta.openingId ?? meta.wallId ?? ''}`;
     const occurrence = identities.get(identity) ?? 0; identities.set(identity, occurrence + 1);
     const id = `${identity}:${meta.partIndex ?? occurrence}`;
-    const eligible = ['slab', 'terrain', 'well', 'balcony', 'stair'].includes(meta.role ?? '');
+    const eligible = ['slab', 'terrain', 'entry-porch', 'well', 'well-grate', 'balcony', 'stair'].includes(meta.role ?? '')
+      || meta.role === 'roof-floor-slab' && meta.unit !== undefined && accessibleRoofs.has(meta.unit);
     const tops = eligible ? snapshot.triangles.filter(t => t.getNormal(new Vector3()).y > .99999 && t.getArea() > 1e-10) : [];
     if (tops.length && (meta.role !== 'stair' || meta.partIndex !== undefined && meta.partKind)) {
-      supports.push({ id, unit: meta.unit, floor: meta.floor, stairId: meta.stairId, partIndex: meta.partIndex,
-        kind: meta.role === 'stair' ? meta.partKind! : meta.role === 'slab' ? 'floor' : meta.role as 'terrain' | 'well' | 'balcony',
+      supports.push({ id, unit: meta.unit, floor: meta.role === 'roof-floor-slab' ? 'roof' : meta.floor, stairId: meta.stairId, partIndex: meta.partIndex,
+        kind: meta.role === 'stair' ? meta.partKind! : meta.role === 'well-grate' ? 'grate' : meta.role === 'entry-porch' ? 'terrain' : meta.role === 'slab' || meta.role === 'roof-floor-slab' ? 'floor' : meta.role as 'terrain' | 'well' | 'balcony',
         worldTopTriangles: tops.map(t => t.clone()), boundary: boundary(tops), portals: [], elevation: tops[0].a.y });
     }
     return { ...snapshot, id };
   });
   const floorLimits: FloorLimit[] = [];
   for (const unit of ['north', 'south'] as const) {
-    for (const floor of ['basement', 'ground', 'first'] as const) {
+    for (const floor of ['basement', 'ground', 'first', 'roof'] as const) {
+      if (floor === 'roof' && !accessibleRoofs.has(unit)) continue;
       const levels = getFloorLevels(floor, state.buildings[unit]);
       if (levels) floorLimits.push({ unit, floor, elevation: levels.elevation, ceiling: levels.ceilingElevation });
     }
-    for (const from of ['basement', 'ground'] as const) {
+    for (const from of ['basement', 'ground', 'first'] as const) {
       const geometry = resolveStairGeometry(state, unit, from);
       if (!geometry) continue;
       const id = `stair-${unit}-${from}`;
-      const order = geometry.layout === 'u-shaped' ? [...(geometry.parts.length > 19 ? [19] : []), ...Array.from({ length: 9 }, (_, i) => i), 18, ...Array.from({ length: 9 }, (_, i) => i + 9)] : Array.from({ length: 18 }, (_, i) => i);
+      const order = stairPartOrder(geometry);
       const track = order.map(index => supports.find(s => s.stairId === id && s.partIndex === index));
       if (track.some(s => !s)) continue;
       for (let i = 1; i < track.length; i++) join(track[i - 1]!, track[i]!);
       const first = track[0]!, last = track.at(-1)!;
       for (const s of supports.filter(s => !s.stairId && s.unit === unit)) {
         if (s.floor === from && Math.abs(first.elevation - s.elevation) <= 1 / 3 + WALK_SKIN) join(s, first);
-        if (s.floor === geometry.toFloor && Math.abs(last.elevation - s.elevation) < WALK_SKIN) join(last, s);
+        if (s.floor === geometry.toFloor && Math.abs(last.elevation - s.elevation) <= geometry.topStepRise + WALK_SKIN) join(last, s);
       }
     }
   }
@@ -105,9 +112,23 @@ export function buildWalkWorld(state: SimulationState, architecture: Architectur
       s.corridorBoundary = undefined;
     }
   }
-  const corners = [[SITE.left, SITE.back], [SITE.right, SITE.back], [SITE.right, SITE.front], [SITE.left, SITE.front]]
-    .map(([x, z]) => trueWorldPoint([x, z], state));
-  return { revision: ++revision, colliders, supports, floorLimits,
+  const corners = state.design.importedPlan
+    ? state.design.importedPlan.outline.map(point => trueWorldPoint(planPoint(point, state.design.importedPlan!.unit, state), state))
+    : [[SITE.left, SITE.back], [SITE.right, SITE.back], [SITE.right, SITE.front], [SITE.left, SITE.front]].map(([x, z]) => trueWorldPoint([x, z], state));
+  const gardenObjects = furnished ? resolvedLandscape(state).map(item => ({
+    id: `landscape-${item.id}`, unit: item.unit, floor: item.level === 'garden' ? 'ground' as const : item.level,
+    center: item.center, rotation: item.rotation, width: item.spread * (['olive-tree', 'cypress'].includes(item.kind) ? .13 : item.kind === 'fern' ? .5 : .46),
+    depth: item.spread * (['olive-tree', 'cypress'].includes(item.kind) ? .13 : item.kind === 'fern' ? .5 : .46), height: Math.min(item.height, 2.5),
+  })) : [];
+  const furnitureColliders = furnished ? [...resolvedFurniture(state).filter(item => !['pendant', 'sink', 'cooktop'].includes(item.kind)), ...gardenObjects].map(item => {
+    const corners = ([[-.5, -.5], [.5, -.5], [.5, .5], [-.5, .5]] as const).map(([x, z]) =>
+      rotatePlanPoint([item.center[0] + x * item.width, item.center[1] + z * item.depth], item.center, item.rotation));
+    const elevation = floorElevation(item.floor, state.buildings[item.unit]);
+    const points = [elevation, elevation + item.height].flatMap(y => corners.map(point => new Vector3(...modelWorldPoint(point, y, item.unit, state))));
+    const indices = [[0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7]];
+    return { id: `furniture:${item.id}`, bounds: new Box3().setFromPoints(points), triangles: indices.map(([a, b, c]) => new Triangle(points[a], points[b], points[c])) };
+  }) : [];
+  return { revision: ++revision, colliders: [...colliders, ...furnitureColliders], supports, floorLimits,
     adjacency,
     siteBounds: { minX: Math.min(...corners.map(p => p[0])) + .2, maxX: Math.max(...corners.map(p => p[0])) - .2,
       minZ: Math.min(...corners.map(p => p[1])) + .2, maxZ: Math.max(...corners.map(p => p[1])) - .2, minY: -6, maxY: 15 } };

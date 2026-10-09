@@ -1,9 +1,11 @@
-import { BASE_FURNITURE, EDITABLE_OPENINGS, EDITABLE_WALLS, ROOMS, defaultState } from '../model/plans';
+import { EDITABLE_FURNITURE, EDITABLE_OPENINGS, EDITABLE_WALLS, EDITABLE_ROOMS, LEGACY_GROUND_WALLS, defaultState } from '../model/plans';
 import type { BuildingSettings, NeighborSettings, OpeningSpec, SimulationState } from '../model/types';
-import { invalid, hasOwn, childPath, record, list, fields, number, boolean, choice, text, point, identifier, editRecords, wallEdit, roomEdit, furnitureEdit, furnitureSpec, openingPatch, OPENING_PATCH_KEYS } from '../model/cadValidation';
+import { invalid, hasOwn, childPath, record, list, fields, number, boolean, choice, text, point, identifier, editRecords, wallEdit, roomEdit, furnitureEdit, furnitureSpec, customWall, openingPatch, OPENING_PATCH_KEYS } from '../model/cadValidation';
 import { resolveLocalDateTime } from './solar';
 import { parseAppearance, surfaceTarget } from '../model/appearance';
 import { CATALOG_IDS } from '../model/modelCatalog';
+import { parseStairPaths } from '../model/stairPath';
+import { parseLandscape } from '../model/landscape';
 
 export const PROJECT_STORAGE_KEY = 'dori-solar-studio-v1';
 
@@ -13,10 +15,12 @@ const MAX_JSON_LENGTH = 8_000_000;
 const MAX_ADDED_OPENINGS = 200;
 const OPENING_KEYS = [
   'id', 'wallId', 'label', 'unit', 'floor', 'kind', 'position', 'width',
-  'height', 'sill', 'open', 'shutter', 'overhang', 'source',
+  'height', 'sill', 'open', 'shutter', 'overhang', 'source', 'swing',
 ] as const satisfies readonly (keyof OpeningSpec)[];
-const WALL_BY_ID = new Map(EDITABLE_WALLS.map(wall => [wall.id, wall] as const));
-const BASE_BY_ID = new Map(EDITABLE_OPENINGS.map(opening => [opening.id, opening] as const));
+const WALL_BY_ID = new Map([...LEGACY_GROUND_WALLS, ...EDITABLE_WALLS].map(wall => [wall.id, wall] as const));
+const BASE_BY_ID = new Map([...LEGACY_GROUND_WALLS.flatMap(wall => wall.openings), ...EDITABLE_OPENINGS].map(opening => [opening.id, opening] as const));
+const RETIRED_ROOM_IDS = ['b-safe', 'b-bath'];
+const RETIRED_FURNITURE_IDS = ['b-safe-bed', 'b-bath-toilet', 'b-bath-basin'];
 
 function fixed<T extends string>(value: unknown, path: string, expected: T): T {
   if (value !== expected) invalid(path, `אין לשנות את שיוך הפתח או את מקורו; יש להשתמש בערך ${expected}.`);
@@ -24,8 +28,13 @@ function fixed<T extends string>(value: unknown, path: string, expected: T): T {
 }
 
 function building(value: unknown, defaults: BuildingSettings, path: string): BuildingSettings {
-  const input = record(value, path, [...Object.keys(defaults), 'stairRotation', 'stairPosition', 'stairScale', 'stairEnabled']);
+  const input = record(value, path, [...Object.keys(defaults), 'stairRotation', 'stairPosition', 'stairScale', 'stairEnabled',
+    'stairPaths', 'stairToRoof', 'stairRailing', 'stairOpeningGlass', 'northGroundLayout', 'southLayout']);
   const get = (key: keyof BuildingSettings): unknown => hasOwn(input, key) ? input[key] : defaults[key];
+  if (path === 'buildings.south' && (hasOwn(input, 'northGroundLayout') || input.firstFloorVariant === 'bedrooms')) {
+    invalid(path, 'החלופה הצפונית אינה מתאימה ליחידה הדרומית.');
+  }
+  if (path === 'buildings.north' && hasOwn(input, 'southLayout')) invalid(path, 'החלופה הדרומית אינה מתאימה ליחידה הצפונית.');
   return {
     enabled: boolean(get('enabled'), `${path}.enabled`),
     width: number(get('width'), `${path}.width`, 5, 18),
@@ -40,13 +49,19 @@ function building(value: unknown, defaults: BuildingSettings, path: string): Bui
     roofEnabled: boolean(get('roofEnabled'), `${path}.roofEnabled`),
     roofFloorHeight: number(get('roofFloorHeight'), `${path}.roofFloorHeight`, 2.2, 4.5),
     roofPeakHeight: number(get('roofPeakHeight'), `${path}.roofPeakHeight`, 7, 15),
-    firstFloorVariant: choice(get('firstFloorVariant'), `${path}.firstFloorVariant`, ['original', 'open-plan'] as const),
+    firstFloorVariant: choice(get('firstFloorVariant'), `${path}.firstFloorVariant`, ['original', 'open-plan', 'bedrooms'] as const),
+    ...(hasOwn(input, 'northGroundLayout') ? { northGroundLayout: choice(input.northGroundLayout, `${path}.northGroundLayout`, ['attached'] as const) } : {}),
+    ...(hasOwn(input, 'southLayout') ? { southLayout: choice(input.southLayout, `${path}.southLayout`, ['family', 'west-stair'] as const) } : {}),
     storeys: choice(get('storeys'), `${path}.storeys`, [1, 2] as const),
     stairLayout: choice(get('stairLayout'), `${path}.stairLayout`, ['straight', 'u-shaped'] as const),
     ...(hasOwn(input, 'stairRotation') ? { stairRotation: number(input.stairRotation, `${path}.stairRotation`, -180, 180) } : {}),
     ...(hasOwn(input, 'stairPosition') ? { stairPosition: point(input.stairPosition, `${path}.stairPosition`) } : {}),
     ...(hasOwn(input, 'stairScale') ? { stairScale: number(input.stairScale, `${path}.stairScale`, .5, 2) } : {}),
     ...(hasOwn(input, 'stairEnabled') ? { stairEnabled: boolean(input.stairEnabled, `${path}.stairEnabled`) } : {}),
+    ...(hasOwn(input, 'stairToRoof') ? { stairToRoof: boolean(input.stairToRoof, `${path}.stairToRoof`) } : {}),
+    ...(hasOwn(input, 'stairRailing') ? { stairRailing: boolean(input.stairRailing, `${path}.stairRailing`) } : {}),
+    ...(hasOwn(input, 'stairOpeningGlass') ? { stairOpeningGlass: boolean(input.stairOpeningGlass, `${path}.stairOpeningGlass`) } : {}),
+    ...(hasOwn(input, 'stairPaths') ? { stairPaths: parseStairPaths(input.stairPaths, `${path}.stairPaths`) } : {}),
   };
 }
 
@@ -79,14 +94,14 @@ function neighbors(value: unknown, defaults: NeighborSettings[]): NeighborSettin
   });
 }
 
-function addedOpening(value: unknown, path: string): OpeningSpec {
+function addedOpening(value: unknown, path: string, walls = WALL_BY_ID): OpeningSpec {
   const input = record(value, path, OPENING_KEYS);
   for (const key of OPENING_KEYS) {
-    if (!hasOwn(input, key)) invalid(`${path}.${key}`, 'השדה נדרש בפתח חדש; יש להשלים אותו או להסיר את הפתח.');
+    if (key !== 'swing' && !hasOwn(input, key)) invalid(`${path}.${key}`, 'השדה נדרש בפתח חדש; יש להשלים אותו או להסיר את הפתח.');
   }
   const id = identifier(input.id, `${path}.id`);
   const wallId = identifier(input.wallId, `${path}.wallId`);
-  const wall = WALL_BY_ID.get(wallId);
+  const wall = walls.get(wallId);
   if (!wall) invalid(`${path}.wallId`, 'הקיר אינו קיים בתוכנית; יש לבחור מזהה קיר קיים של היחידה והקומה.');
   return {
     id, wallId,
@@ -99,6 +114,7 @@ function addedOpening(value: unknown, path: string): OpeningSpec {
     height: number(input.height, `${path}.height`, 0, 6),
     sill: number(input.sill, `${path}.sill`, 0, 6),
     open: boolean(input.open, `${path}.open`),
+    ...(hasOwn(input, 'swing') ? { swing: choice(input.swing, `${path}.swing`, ['positive', 'negative'] as const) } : {}),
     shutter: boolean(input.shutter, `${path}.shutter`),
     overhang: number(input.overhang, `${path}.overhang`, 0, 3),
     source: fixed(input.source, `${path}.source`, 'added'),
@@ -161,8 +177,24 @@ function validateProject(value: unknown): SimulationState {
   const view = fields(get('view'), defaults.view, 'view');
   const reference = fields(get('reference'), defaults.reference, 'reference');
   const vehicles = fields(get('vehicles'), defaults.vehicles, 'vehicles');
-  const design = fields(get('design'), defaults.design, 'design');
-  const knownFurniture = new Set(BASE_FURNITURE.map(item => item.id));
+  const designInput = record(get('design'), 'design', [...Object.keys(defaults.design), 'addedWalls', 'importedPlan', 'groundPlan', 'landscape']);
+  const design = (key: keyof SimulationState['design']): unknown => hasOwn(designInput, key) ? designInput[key] : defaults.design[key];
+  const walls = new Map(WALL_BY_ID);
+  const addedWalls = hasOwn(designInput, 'addedWalls') ? list(design('addedWalls'), 'design.addedWalls', 200).map((value, index) => {
+    const wall = customWall(value, `design.addedWalls[${index}]`);
+    if (walls.has(wall.id)) invalid('design.addedWalls', 'מזהה קיר כפול.');
+    walls.set(wall.id, wall); return wall;
+  }) : undefined;
+  let importedPlan: SimulationState['design']['importedPlan'];
+  if (hasOwn(designInput, 'importedPlan')) {
+    const data = record(design('importedPlan'), 'importedPlan', ['unit', 'sourceName', 'outline', 'image', 'imageWidth', 'imageDepth']);
+    const outline = list(data.outline, 'importedPlan.outline', 64).map((p, index) => point(p, `importedPlan.outline[${index}]`));
+    if (outline.length < 3 || Math.abs(outline.reduce((area, p, i) => { const q = outline[(i + 1) % outline.length]; return area + p[0] * q[1] - p[1] * q[0]; }, 0)) < .1) invalid('importedPlan.outline', 'נדרשת מעטפת רצפה בעלת שטח.');
+    importedPlan = { unit: choice(data.unit, 'importedPlan.unit', ['north', 'south']), sourceName: text(data.sourceName, 'importedPlan.sourceName'),
+      outline, image: referenceImage(data.image), imageWidth: number(data.imageWidth, 'importedPlan.imageWidth', .1, 100),
+      imageDepth: number(data.imageDepth, 'importedPlan.imageDepth', .1, 100) };
+  }
+  const knownFurniture = new Set([...EDITABLE_FURNITURE.map(item => item.id), ...RETIRED_FURNITURE_IDS]);
   const addedFurniture = list(design('addedFurniture'), 'design.addedFurniture', 200).map((item, index) => {
     const parsed = furnitureSpec(item, `design.addedFurniture[${index}]`);
     if (knownFurniture.has(parsed.id)) invalid(`design.addedFurniture[${index}].id`, 'יש לבחור מזהה ריהוט ייחודי; המזהה כבר קיים.');
@@ -171,7 +203,7 @@ function validateProject(value: unknown): SimulationState {
   });
   const knownOpenings = new Map(BASE_BY_ID);
   const addedOpenings = list(get('addedOpenings'), 'addedOpenings', MAX_ADDED_OPENINGS).map((item, index) => {
-    const opening = addedOpening(item, `addedOpenings[${index}]`);
+    const opening = addedOpening(item, `addedOpenings[${index}]`, walls);
     if (knownOpenings.has(opening.id)) invalid(`addedOpenings[${index}].id`, 'מזהה הפתח כבר קיים; יש לבחור מזהה ייחודי שאינו מזהה של פתח מקור.');
     knownOpenings.set(opening.id, opening);
     return opening;
@@ -191,14 +223,14 @@ function validateProject(value: unknown): SimulationState {
   }
 
   const targets = new Set([
-    ...EDITABLE_WALLS.map(w => `wall-${w.id}`), ...[...knownFurniture].map(id => `furniture-${id}`),
+    ...[...walls.keys()].map(id => `wall-${id}`), ...[...knownFurniture].map(id => `furniture-${id}`),
     ...[...knownOpenings.keys()].map(id => `opening-${id}`), 'building-north', 'building-south', 'neighbor-east', 'neighbor-west',
   ]);
   for (const unit of ['north', 'south'] as const) {
     for (const floor of ['basement', 'ground', 'first', 'roof'] as const) {
       targets.add(surfaceTarget('floor', unit, floor)); targets.add(surfaceTarget('ceiling', unit, floor));
     }
-    for (const floor of ['basement', 'ground']) targets.add(`stair-stair-${unit}-${floor}`);
+    for (const floor of ['basement', 'ground', 'first']) targets.add(`stair-stair-${unit}-${floor}`);
   }
   return {
     version: 1, date, minutes,
@@ -220,11 +252,15 @@ function validateProject(value: unknown): SimulationState {
     },
     openings, addedOpenings,
     design: {
-      wallEdits: editRecords(design('wallEdits'), 'design.wallEdits', new Set(EDITABLE_WALLS.map(wall => wall.id)), wallEdit),
-      roomEdits: editRecords(design('roomEdits'), 'design.roomEdits', new Set(ROOMS.map(room => room.id)), roomEdit),
+      wallEdits: editRecords(design('wallEdits'), 'design.wallEdits', new Set(walls.keys()), wallEdit),
+      roomEdits: editRecords(design('roomEdits'), 'design.roomEdits', new Set([...EDITABLE_ROOMS.map(room => room.id), ...RETIRED_ROOM_IDS, ...(importedPlan ? ['imported-room'] : [])]), roomEdit),
       furnitureEdits: editRecords(design('furnitureEdits'), 'design.furnitureEdits', knownFurniture,
         (value, path) => furnitureEdit(value, path, addedFurniture.some(item => path === `design.furnitureEdits.${item.id}`) ? 100 : 150)),
       addedFurniture,
+      ...(addedWalls ? { addedWalls } : {}),
+      ...(importedPlan ? { importedPlan } : {}),
+      ...(hasOwn(designInput, 'groundPlan') ? { groundPlan: choice(design('groundPlan'), 'design.groundPlan', ['october-2026'] as const) } : {}),
+      ...(hasOwn(designInput, 'landscape') ? { landscape: parseLandscape(design('landscape')) } : {}),
     },
     view: {
       mode: choice(view('mode'), 'view.mode', ['orbit', 'plan', 'walk'] as const),

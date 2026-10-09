@@ -1,12 +1,18 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { MODEL_ASSETS, SURFACE_ASSETS, type SurfaceId } from './materialLibrary';
+import { MODEL_ASSETS, SURFACE_ASSETS, type SurfaceChannel, type SurfaceId } from './materialLibrary';
 import { disposeResources, retainResource } from './resources';
 import { cachedURL, modelResourcesPaths } from '../lib/assetCache';
 import { catalogModel } from '../model/modelCatalog';
 import type { Appearance } from '../model/appearance';
+import { loadShowroomModel, SHOWROOM_MODELS } from './showroomAssets';
 
-export interface SurfaceMaps { color: THREE.Texture; normal: THREE.Texture; roughness: THREE.Texture }
+export interface SurfaceMaps {
+  color: THREE.Texture;
+  roughness: THREE.Texture;
+  normal?: THREE.Texture;
+  height?: THREE.Texture;
+}
 export interface RealisticAssets {
   surfaces: Map<SurfaceId, SurfaceMaps>;
   models: Map<string, THREE.Group>;
@@ -43,7 +49,7 @@ export function modelResources(root: THREE.Object3D) {
 /** One pool per viewer, never per scene rebuild or CPU sunlight calculation.
  * Late loads after unmount are disposed, never attached to a dead scene.
  */
-export function createRealisticAssets(anisotropy: number): RealisticAssets {
+export function createRealisticAssets(anisotropy: number, showroom = false): RealisticAssets {
   const surfaces = new Map<SurfaceId, SurfaceMaps>(), models = new Map<string, THREE.Group>();
   const images = new Map<string, THREE.Texture>(), imageSources = new Map<string, string>();
   const requestedImages = new Map<string, string>();
@@ -51,7 +57,7 @@ export function createRealisticAssets(anisotropy: number): RealisticAssets {
   const ownedTextures = new Set<THREE.Texture>();
   let disposed = false, pending: Promise<string[]> | undefined;
   const loader = new THREE.TextureLoader(), gltf = new GLTFLoader();
-  const texture = async (id: SurfaceId, channel: keyof SurfaceMaps) => {
+  const texture = async (id: SurfaceId, channel: SurfaceChannel) => {
     const resource = await cachedURL(`${id}-${channel}.jpg`);
     let t: THREE.Texture;
     try { t = await loader.loadAsync(resource.url); } finally { resource.release(); }
@@ -70,8 +76,8 @@ export function createRealisticAssets(anisotropy: number): RealisticAssets {
       const jobs = [
         ...SURFACE_ASSETS.map(async asset => {
           if (surfaces.has(asset.id)) return;
-          const [color, normal, roughness] = await Promise.all([texture(asset.id, 'color'), texture(asset.id, 'normal'), texture(asset.id, 'roughness')]);
-          if (!disposed) surfaces.set(asset.id, { color, normal, roughness });
+          const loaded = await Promise.all(asset.channels.map(async channel => [channel, await texture(asset.id, channel)] as const));
+          if (!disposed) surfaces.set(asset.id, Object.fromEntries(loaded) as unknown as SurfaceMaps);
         }),
         ...MODEL_ASSETS.map(async asset => {
           if (models.has(asset.id)) return;
@@ -93,9 +99,23 @@ export function createRealisticAssets(anisotropy: number): RealisticAssets {
           });
           models.set(asset.id, model);
         }),
+        ...(showroom ? SHOWROOM_MODELS.map(async id => {
+          const result = await loadShowroomModel(id), resources = modelResources(result.scene);
+          if (disposed) { disposeResources(resources.geometries, resources.materials, true); return; }
+          let normalized: THREE.Group;
+          try { normalized = normalizeModel(result.scene); }
+          catch (error) { disposeResources(resources.geometries, resources.materials, true); throw error; }
+          resources.geometries.forEach(retainResource);
+          resources.materials.forEach(material => {
+            retainResource(material);
+            for (const value of Object.values(material)) if (value instanceof THREE.Texture) retainResource(value);
+          });
+          models.set(`showroom-${id}`, normalized);
+        }) : []),
       ];
       // Each asset is independent: missing maps/models leave a usable material/mesh.
-      pending = Promise.allSettled(jobs).then(results => results.flatMap((r, i) => r.status === 'rejected' ? [i < SURFACE_ASSETS.length ? SURFACE_ASSETS[i].id : MODEL_ASSETS[i - SURFACE_ASSETS.length].id] : []));
+      const names = [...SURFACE_ASSETS.map(asset => asset.id), ...MODEL_ASSETS.map(asset => asset.id), ...(showroom ? SHOWROOM_MODELS : [])];
+      pending = Promise.allSettled(jobs).then(results => results.flatMap((r, i) => r.status === 'rejected' ? [names[i]] : []));
       return pending;
     },
     async sync(appearance) {

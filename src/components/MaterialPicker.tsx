@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import type { SimulationState } from '../model/types';
 import { assignMaterial, emptyAppearance, FINISHES, FINISH_NAMES } from '../model/appearance';
 import { importMaterialImage } from '../lib/materialImage';
-import { saveProject, serializeProject } from '../lib/project';
+import { serializeProject } from '../lib/project';
+import { ProjectPersistence } from '../lib/projectPersistence';
 import { Button } from './ui/button';
 import '../components/materialLibrary.css';
 
 export function MaterialPicker({ state, target, onChange }: { state: SimulationState; target: string; onChange: (state: SimulationState, label?: string) => void }) {
+  const persist = useContext(ProjectPersistence);
   const appearance = state.appearance ?? emptyAppearance(), assigned = appearance.assignments[target];
   const [material, setMaterial] = useState(assigned?.material ?? ''), [metres, setMetres] = useState(assigned?.metres ?? 1);
   const [roughness, setRoughness] = useState(assigned?.roughness ?? .6), [error, setError] = useState(''), [busy, setBusy] = useState(false);
@@ -41,7 +43,7 @@ export function MaterialPicker({ state, target, onChange }: { state: SimulationS
         const id = `image-${crypto.randomUUID()}`, next = { ...base, appearance: { ...appearance, images: [...appearance.images, { id, name: file.name.slice(0, 180), image }] } };
         const applied = assignMaterial(next, target, { material: id, metres: 1, roughness: .6 });
         serializeProject(applied);
-        if (!saveProject(applied)) throw new Error('אין מקום בשמירת הדפדפן; החומר לא נוסף. שמרו גיבוי ופנו מקום.');
+        if (!persist(applied)) throw new Error('אין מקום בשמירת הדפדפן; החומר לא נוסף. שמרו גיבוי ופנו מקום.');
         publish(applied, 'הוספת חומר מתמונה'); setMaterial(id); setMetres(1); setRoughness(.6);
       } catch (cause) { setError(cause instanceof Error ? cause.message : 'לא ניתן לקרוא תמונה'); }
       finally { setBusy(false); }

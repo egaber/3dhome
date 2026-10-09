@@ -4,6 +4,38 @@
 
 Interactive 3D sun-and-shadow study for a residential site in Ra'anana.
 
+## V2 · Walkthrough showroom
+
+Open **`/#v2`** (locally, `http://127.0.0.1:5173/#v2`) for the new customer-facing
+experience. The original studio remains at `/` or `/#classic`, with separate
+browser storage. The original source and runnable build were also archived before
+the redesign; no Git history was rewritten.
+
+- Walk at eye level with WASD/arrows, mouse/touch looking and Q/E turning.
+  A top-right minimap follows the real camera position, direction and floor.
+- Reference-inspired wood/stone finishes, black frames, upholstery, curtains,
+  cabinet details, plants, warm fixtures, filmic lighting and optional contact shadows.
+  This is real-time Three.js PBR, **not a promise of photographic or AAA-game parity**.
+- Save named independent alternatives; edits save automatically with visible error
+  handling. Duplicate, reopen, rename, export and reimport alternatives. Browser
+  storage is not a backup: download your design library.
+- The shared 2D editor supports exact dimensions, movement, rotation, deletion,
+  opening sizes, new walls, wall/furniture copy-paste and undo/redo.
+- Import simple vector PDFs or JPEG/PNG/WebP plans **locally**, calibrate against a
+  known length, review/edit detected lines, and create a separate editable 2D/3D
+  alternative. Scanned images are assisted tracing, not guaranteed automatic CAD.
+
+See [V2 usage, accuracy and storage limits](docs/SHOWROOM-V2.md).
+
+### 8 October alternative and garden
+
+Use **חלופות → פתיחת חלופת 8 באוקטובר**, or
+`/?plan=october-2026#v2`, to create/open the new ground-floor design from the supplied
+PDF without replacing saved options. **סיור בגינה** enters outdoor walking;
+approach a door/glazing and click or press **F** to open/close it. **צמחייה** adds,
+moves, resizes and removes independent trees/pots, including the defaults.
+Repeated exterior pot rows are gone. [Source measurements and usage](docs/OCTOBER-GARDEN.md).
+
 ## Local development
 
 1. `npm ci`
@@ -22,7 +54,7 @@ The deployed application stores model edits, view state, and chat history locall
 - Select **ריאליסטי** for locally bundled PBR wood, woven fabric, marble, plaster and tiles, physical ceramic/metal/glass finishes, and detailed sofa/armchair GLBs. **חומרים וריהוט** shows material swatches, sources and licences.
 - Double-click an object in 3D, or select it in 2D, to edit position, rotation and dimensions, delete, duplicate furniture/doors, choose its 3D model and assign a material. The library also targets floors, ceilings and stairs. **הוספת חומר מתמונה** imports local PNG/JPEG/WebP textures.
 - **קטלוג ריהוט ומכשירים** adds 33 more licensed models (32 lightweight Kenney furniture/appliances plus a Poly Haven PBR armchair), with local text/category search and external provider-search links. Arbitrary personal GLB import and structural-object duplication are not included.
-- Realism assets load lazily (~21.2 MB), are reused across edits, and fall back gracefully if unavailable. No AI server, API key or third-party runtime requests. The rendering mode uses the existing undo stack and browser persistence.
+- Realism assets load lazily (~33.7 MB, including the supplied 2K outdoor grass maps), are reused across edits, and fall back gracefully if unavailable. Realistic lawns combine those local PBR maps with instanced grass blades; diagram mode stays lightweight. No AI server, API key or third-party runtime requests. The rendering mode uses the existing undo stack and browser persistence.
 - **Deploy the entire build output**, including the optional asset directory; copying only the generated HTML omits the new textures/models. [Sources, licensing, limits and architecture](docs/REALISTIC-ASSETS.md).
 - **שמירת קובץ** now embeds images, core textures/models and additionally selected models. IndexedDB caches assets across reloads; portable import can restore an empty cache. Supported browsers can choose a local file for debounced, serialized automatic backup. Browser cache is not a backup: keep the exported file safe and wait for successful-write status before closing.
 

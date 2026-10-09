@@ -1,24 +1,31 @@
 /** Pure CAD model operations. No history, persistence, DOM, meshes or gesture state. */
 import { normalizeApertures, type Aperture } from '../lib/wallGeometry';
-import { BASE_DEPTH, BASE_WIDTH, EDITABLE_OPENINGS, BASE_FURNITURE, PARTY_Z, ROOMS, SLAB, STAIR_HOLES,
+import { BASE_DEPTH, BASE_WIDTH, EDITABLE_OPENINGS, EDITABLE_FURNITURE, EDITABLE_WALLS, PARTY_Z, SLAB, STAIR_HOLES,
   floorElevation, isFloorAvailable, planPoint, resolvedFurniture, resolvedOpenings, resolvedRooms, resolvedWalls, trueWorldPoint, wallHeight, wallScale } from './plans';
-import type { BuildingSettings, FloorId, FurnitureEdit, FurnitureSpec, PlanWall, RoomEdit, SimulationState, StairLayout, UnitId, Vec2, WallEdit } from './types';
-import { choice, furnitureEdit, furnitureSpec, hasOwn, identifier, invalid, number, openingPatch, point, record, roomEdit, wallEdit, type OpeningPatch } from './cadValidation';
+import type { BuildingSettings, FloorId, LevelId, FurnitureEdit, FurnitureSpec, PlanWall, RoomEdit, SimulationState, StairLayout, StairPathSettings, UnitId, Vec2, WallEdit } from './types';
+import { boolean, choice, customWall, furnitureEdit, furnitureSpec, hasOwn, identifier, invalid, number, openingPatch, point, record, roomEdit, wallEdit, type OpeningPatch } from './cadValidation';
 export type { OpeningPatch } from './cadValidation';
 import { normalizeRotation, rotatePlanPoint } from './rotation';
 import { emptyAppearance, stairOptions } from './appearance';
+import { createStairPath, parseStairPath, type StairPortal } from './stairPath';
+import { SOUTH_WEST_STAIR_HOLE } from './southWestLayout';
+import { SOUTH_FAMILY_STAIR_HOLE } from './southFamilyLayout';
+import { NORTH_GROUND_STAIR_HOLE } from './northGroundLayout';
 
 export type Vec3 = [number, number, number];
 export interface FloorLevels { elevation: number; storeyHeight: number; clearHeight: number; ceilingElevation: number }
 export interface DistanceMeasurement { distance: number; horizontal: number; vertical: number }
 export interface StairPart { kind: 'tread' | 'landing' | 'entry-apron'; center: Vec2; width: number; depth: number; bottom: number; height: number; rotation?: number }
 export interface StairGeometry {
-  unit: UnitId; fromFloor: 'basement' | 'ground'; toFloor: 'ground' | 'first'; layout: StairLayout;
+  unit: UnitId; fromFloor: FloorId; toFloor: 'ground' | 'first' | 'roof'; layout: StairLayout;
   footprint: Vec2[]; rise: number; parts: StairPart[];
   pivot: Vec2; rotation: number;
+  riserCount: number; topStepRise: number; customPath?: boolean;
+  entry?: StairPortal; exit?: StairPortal;
 }
 export type CadCommand =
   | { type: 'wall'; id: string; edit: WallEdit }
+  | { type: 'add-wall'; item: PlanWall }
   | { type: 'room'; id: string; edit: RoomEdit }
   | { type: 'opening'; id: string; patch: OpeningPatch }
   | { type: 'add-window'; id: string; wallId: string; position: number }
@@ -27,14 +34,17 @@ export type CadCommand =
   | { type: 'add-furniture'; item: FurnitureSpec }
   | { type: 'stair'; unit: UnitId; layout: StairLayout }
   | { type: 'stair-rotation'; unit: UnitId; rotation: number }
-  | { type: 'stair-position'; unit: UnitId; position: Vec2 };
+  | { type: 'stair-position'; unit: UnitId; position: Vec2 }
+  | { type: 'stair-path'; unit: UnitId; fromFloor: FloorId; path: StairPathSettings | null }
+  | { type: 'stair-roof'; unit: UnitId; enabled: boolean }
+  | { type: 'stair-protection'; unit: UnitId; railing: boolean; openingGlass: boolean };
 export type ObjectCommand = CadCommand | { type: 'duplicate-furniture'; id: string; newId: string }
   | { type: 'duplicate-opening'; id: string; newId: string }
   | { type: 'stair-options'; unit: UnitId; scale: number; enabled: boolean };
 
-export function getFloorLevels(floor: FloorId, building: BuildingSettings): FloorLevels | null {
+export function getFloorLevels(floor: LevelId, building: BuildingSettings): FloorLevels | null {
   if (!building || !isFloorAvailable(floor, building)) return null;
-  const storeyHeight = floor === 'basement' ? building.basementDepth : floor === 'ground' ? building.groundHeight : building.upperHeight;
+  const storeyHeight = floor === 'roof' ? building.roofFloorHeight : floor === 'basement' ? building.basementDepth : floor === 'ground' ? building.groundHeight : building.upperHeight;
   const elevation = floorElevation(floor, building);
   if (![storeyHeight, elevation, building.groundHeight, building.basementDepth].every(Number.isFinite)
     || storeyHeight < (floor === 'basement' ? 1 : 2.3) || storeyHeight > 6
@@ -72,49 +82,89 @@ export function measureBetween(a: Vec3, b: Vec3): DistanceMeasurement | null {
 }
 
 /** 18 conceptual rises, never clear-room height. The returned footprint cuts ONLY the destination slab. */
-export function resolveStairGeometry(state: SimulationState, unit: UnitId, fromFloor: 'basement' | 'ground'): StairGeometry | null {
-  if (!['north', 'south'].includes(unit) || !['basement', 'ground'].includes(fromFloor)) return null;
+export function resolveStairGeometry(state: SimulationState, unit: UnitId, fromFloor: 'basement' | 'ground'): (StairGeometry & { fromFloor: 'basement' | 'ground'; toFloor: 'ground' | 'first' }) | null;
+export function resolveStairGeometry(state: SimulationState, unit: UnitId, fromFloor: FloorId): StairGeometry | null;
+export function resolveStairGeometry(state: SimulationState, unit: UnitId, fromFloor: FloorId): StairGeometry | null {
+  if (!['north', 'south'].includes(unit) || !['basement', 'ground', 'first'].includes(fromFloor)) return null;
   const b = state.buildings[unit];
   if (!b || b.stairEnabled === false || !['straight', 'u-shaped'].includes(b.stairLayout)) return null;
-  const from = getFloorLevels(fromFloor, b), toFloor = fromFloor === 'basement' ? 'ground' : 'first';
+  if (fromFloor === 'first' && (!b.stairToRoof || !b.roofEnabled || b.storeys !== 2)) return null;
+  const from = getFloorLevels(fromFloor, b), toFloor = fromFloor === 'basement' ? 'ground' : fromFloor === 'ground' ? 'first' : 'roof';
   const to = getFloorLevels(toFloor, b);
   if (!from || !to) return null;
-  const [[xmin, zmin], [xmax], [, zmax]] = STAIR_HOLES[unit];
-  const flight = (xmax - xmin - .13) / 2, landing = .72, tread = (zmax - zmin - landing) / 9;
-  const entrance = zmax - .10; // Retain the old lower-flight entrance anchor.
+  const west = unit === 'south' && b.southLayout === 'west-stair';
+  const family = unit === 'south' && b.southLayout === 'family';
+  const attached = unit === 'north' && b.northGroundLayout === 'attached';
+  const hole = west ? SOUTH_WEST_STAIR_HOLE : family ? SOUTH_FAMILY_STAIR_HOLE : attached ? NORTH_GROUND_STAIR_HOLE : STAIR_HOLES[unit];
+  const [[xmin, zmin], [xmax], [, zmax]] = hole;
+  const risers = family ? 20 : 18;
+  const modernU = !west && (family || attached) && b.stairLayout === 'u-shaped';
+  const flight = west ? xmax - xmin : family ? 1 : attached ? 1.05 : (xmax - xmin - .13) / 2;
+  const landing = family ? 1.1 : attached ? .9 : .72, perFlight = modernU ? risers / 2 - 1 : 9;
+  const tread = west ? (zmax - zmin) / 18 : (zmax - zmin - landing) / perFlight;
+  const entrance = west || modernU ? zmax : zmax - .10;
   const rise = to.elevation - from.elevation;
   if (!Number.isFinite(rise) || rise <= 0) return null;
   const parts: StairPart[] = [];
-  for (let i = 0; i < 18; i++) {
-    const returning = b.stairLayout === 'u-shaped' && i >= 9;
+  for (let i = 0; i < (modernU ? perFlight * 2 : 18); i++) {
+    const returning = b.stairLayout === 'u-shaped' && i >= perFlight;
     parts.push({ kind: 'tread', width: flight, depth: tread, height: .10,
       center: [returning ? xmax - flight / 2 : xmin + flight / 2,
-        returning ? zmin + landing + tread * (i - 9 + .5) : entrance - tread * (i + .5)],
-      bottom: from.elevation + rise * (i + 1) / 18 - .10 });
+        returning ? zmin + landing + tread * (i - perFlight + .5) : entrance - tread * (i + .5)],
+      bottom: from.elevation + rise * (i + 1 + (modernU && returning ? 1 : 0)) / risers - .10 });
   }
   if (b.stairLayout === 'u-shaped') parts.push({ kind: 'landing', center: [(xmin + xmax) / 2, zmin + landing / 2],
     width: xmax - xmin, depth: landing, height: .12, bottom: from.elevation + rise / 2 - .12 });
   // The incoming basement cutout removes the ground floor in this real .10m
   // seam. Render a distinct source-level apron; never bridge it in navigation.
-  if (b.stairLayout === 'u-shaped' && fromFloor === 'ground') parts.push({ kind: 'entry-apron',
+  if (b.stairLayout === 'u-shaped' && !modernU && fromFloor === 'ground') parts.push({ kind: 'entry-apron',
     center: [xmin + flight / 2, zmax - .05], width: flight, depth: .10, height: .10, bottom: from.elevation - .10 });
-  const footprint: Vec2[] = b.stairLayout === 'u-shaped' ? STAIR_HOLES[unit].map(p => [...p])
+  let footprint: Vec2[] = b.stairLayout === 'u-shaped' ? hole.map(p => [...p])
     : [[xmin, entrance - 18 * tread], [xmin + flight, entrance - 18 * tread], [xmin + flight, entrance], [xmin, entrance]];
   const originalPivot: Vec2 = [(xmin + xmax) / 2, (zmin + zmax) / 2];
   const pivot: Vec2 = b.stairPosition ? [...b.stairPosition] : originalPivot;
   if (pivot.length !== 2 || !pivot.every(value => Number.isFinite(value) && Math.abs(value) <= 100)) return null;
+  let path: StairPathSettings | undefined;
+  if (b.stairPaths?.[fromFloor]) {
+    try { path = parseStairPath(b.stairPaths[fromFloor]); }
+    catch { return null; }
+  }
+  let entry: StairPortal | undefined, exit: StairPortal | undefined;
+  if (path) {
+    const custom = createStairPath(path, [xmin + path.width / 2, entrance], from.elevation, rise);
+    parts.splice(0, parts.length, ...custom.parts);
+    footprint = custom.footprint; entry = custom.entry; exit = custom.exit;
+  }
   const rotation = b.stairRotation ?? 0;
   const scale = b.stairScale ?? 1;
   if (!Number.isFinite(scale) || scale < .5 || scale > 2) return null;
   if (!Number.isFinite(rotation) || rotation < -180 || rotation > 180) return null;
   const transform = (p: Vec2): Vec2 => {
-    const rotated = rotatePlanPoint([originalPivot[0] + (p[0] - originalPivot[0]) * scale, originalPivot[1] + (p[1] - originalPivot[1]) * scale], originalPivot, rotation);
+    const relative = rotatePlanPoint(p, originalPivot, path?.rotation ?? 0);
+    const moved: Vec2 = [relative[0] + (path?.offset?.[0] ?? 0), relative[1] + (path?.offset?.[1] ?? 0)];
+    const rotated = rotatePlanPoint([originalPivot[0] + (moved[0] - originalPivot[0]) * scale, originalPivot[1] + (moved[1] - originalPivot[1]) * scale], originalPivot, rotation);
     return [rotated[0] + pivot[0] - originalPivot[0], rotated[1] + pivot[1] - originalPivot[1]];
   };
-  const changed = rotation !== 0 || scale !== 1 || pivot.some((value, i) => value !== originalPivot[i]);
-  return { unit, fromFloor, toFloor, layout: b.stairLayout, pivot, rotation, rise,
+  const changed = rotation !== 0 || scale !== 1 || pivot.some((value, i) => value !== originalPivot[i])
+    || !!path?.rotation || !!path?.offset?.some(value => value !== 0);
+  const portal = (value: StairPortal): StairPortal => ({ center: transform(value.center), a: transform(value.a), b: transform(value.b) });
+  return { unit, fromFloor, toFloor, layout: b.stairLayout, pivot, rotation, rise, riserCount: path ? 18 : risers, topStepRise: path ? rise / 18 : modernU ? rise / risers : 0,
+    ...(path ? { customPath: true, entry: portal(entry!), exit: portal(exit!) } : {}),
     footprint: changed ? footprint.map(transform) : footprint,
-    parts: changed ? parts.map(part => ({ ...part, width: part.width * scale, depth: part.depth * scale, center: transform(part.center), ...(rotation ? { rotation } : {}) })) : parts };
+    parts: changed ? parts.map(part => {
+      const angle = normalizeRotation((part.rotation ?? 0) + (path?.rotation ?? 0) + rotation);
+      const transformed = { ...part, width: part.width * scale, depth: part.depth * scale, center: transform(part.center) };
+      delete transformed.rotation;
+      if (angle) transformed.rotation = angle;
+      return transformed;
+    }) : parts };
+}
+
+export function stairPartOrder(geometry: StairGeometry): number[] {
+  return geometry.parts.map((_, index) => index).sort((left, right) => {
+    const a = geometry.parts[left], b = geometry.parts[right];
+    return (a.bottom + a.height) - (b.bottom + b.height) || left - right;
+  });
 }
 
 /** Shared normalized local apertures. Resolve the host by ID so stale caller endpoints cannot win. */
@@ -156,11 +206,45 @@ function activeWall(id: string, state: SimulationState, restore = false): PlanWa
 /** Validates/copies the entire command before one immutable update. Caller owns shared history. */
 export function applyCadCommand(state: SimulationState, command: CadCommand): SimulationState {
   const input = record(command, 'command');
-  const type = choice(input.type, 'command.type', ['wall', 'room', 'opening', 'add-window', 'delete-opening', 'furniture', 'add-furniture', 'stair', 'stair-rotation', 'stair-position']);
-  const keys = type === 'stair-position' ? ['type', 'unit', 'position'] : type === 'stair-rotation' ? ['type', 'unit', 'rotation'] : type === 'stair' ? ['type', 'unit', 'layout'] : type === 'add-furniture' ? ['type', 'item']
+  const type = choice(input.type, 'command.type', ['wall', 'add-wall', 'room', 'opening', 'add-window', 'delete-opening', 'furniture', 'add-furniture', 'stair', 'stair-rotation', 'stair-position', 'stair-path', 'stair-roof', 'stair-protection']);
+  const keys = type === 'stair-path' ? ['type', 'unit', 'fromFloor', 'path'] : type === 'stair-roof' ? ['type', 'unit', 'enabled']
+    : type === 'stair-protection' ? ['type', 'unit', 'railing', 'openingGlass']
+    : type === 'stair-position' ? ['type', 'unit', 'position'] : type === 'stair-rotation' ? ['type', 'unit', 'rotation'] : type === 'stair' ? ['type', 'unit', 'layout'] : type === 'add-furniture' || type === 'add-wall' ? ['type', 'item']
     : type === 'add-window' ? ['type', 'id', 'wallId', 'position'] : type === 'delete-opening' ? ['type', 'id']
       : ['type', 'id', type === 'opening' ? 'patch' : 'edit'];
   record(input, 'command', keys);
+  if (type === 'add-wall') {
+    const item = customWall(input.item, 'item');
+    available(item.floor, item.unit, state);
+    const walls = state.design.addedWalls ?? [];
+    if (walls.length >= 200 || [...EDITABLE_WALLS, ...walls].some(wall => wall.id === item.id)) invalid('wall.id', 'מזהה כפול או מגבלת 200 קירות נוספים.');
+    return { ...state, design: { ...state.design, addedWalls: [...walls, item] } };
+  }
+  if (type === 'stair-path' || type === 'stair-roof' || type === 'stair-protection') {
+    const unit = choice(input.unit, 'unit', ['north', 'south']);
+    available('ground', unit, state);
+    const building = state.buildings[unit], next = { ...building };
+    if (type === 'stair-path') {
+      const floor = choice(input.fromFloor, 'fromFloor', ['basement', 'ground', 'first']);
+      if (!resolveStairGeometry(state, unit, floor)) invalid('stair', 'יש לבחור חיבור מדרגות פעיל.');
+      const path = input.path === null ? null : parseStairPath(input.path);
+      const paths = { ...building.stairPaths };
+      if (path) paths[floor] = path; else delete paths[floor];
+      if (Object.keys(paths).length) next.stairPaths = paths; else delete next.stairPaths;
+    } else if (type === 'stair-roof') {
+      next.stairToRoof = boolean(input.enabled, 'enabled');
+      if (next.stairToRoof) {
+        if (!getFloorLevels('roof', building)) invalid('roof', 'יש להפעיל קומה ראשונה וגג לפני הוספת מדרגות.');
+        if (!building.stairPaths?.first && building.stairPaths?.ground) {
+          next.stairPaths = { ...building.stairPaths, first: parseStairPath(building.stairPaths.ground) };
+        }
+      }
+    } else {
+      next.stairRailing = boolean(input.railing, 'railing');
+      next.stairOpeningGlass = boolean(input.openingGlass, 'openingGlass');
+    }
+    return equal(building, next) ? state : { ...state, buildings: { ...state.buildings, [unit]: next } };
+  }
   if (type === 'stair-position') {
     const unit = choice(input.unit, 'unit', ['north', 'south']);
     const position = point(input.position, 'position');
@@ -179,13 +263,24 @@ export function applyCadCommand(state: SimulationState, command: CadCommand): Si
   if (type === 'stair') {
     const unit = choice(input.unit, 'unit', ['north', 'south']), layout = choice(input.layout, 'layout', ['straight', 'u-shaped']);
     available('ground', unit, state);
-    return state.buildings[unit].stairLayout === layout ? state : { ...state, buildings: { ...state.buildings, [unit]: { ...state.buildings[unit], stairLayout: layout } } };
+    if (state.buildings[unit].stairLayout === layout && !state.buildings[unit].stairPaths) return state;
+    const building = { ...state.buildings[unit], stairLayout: layout };
+    delete building.stairPaths;
+    return { ...state, buildings: { ...state.buildings, [unit]: building } };
   }
   if (type === 'add-furniture') {
     const item = furnitureSpec(input.item, 'item');
     available(item.floor, item.unit, state);
+    const building = state.buildings[item.unit];
+    const layout: FurnitureSpec['layout'] = item.floor === 'ground' && state.design.groundPlan === 'october-2026' ? 'october-ground'
+      : item.unit === 'north' && item.floor === 'ground' && building.northGroundLayout === 'attached' ? 'north-ground'
+      : item.unit === 'north' && item.floor === 'first' && building.firstFloorVariant === 'bedrooms' ? 'north-bedrooms'
+        : item.unit === 'south' && item.floor !== 'basement' && building.southLayout === 'family' ? 'south-family'
+          : item.unit === 'south' && item.floor === 'ground' && building.southLayout === 'west-stair' ? 'south-west' : undefined;
+    if (item.layout && item.layout !== layout) invalid('item.layout', 'החלופה אינה תואמת ליחידה ולקומה הפעילות.');
+    if (layout) item.layout = layout;
     if (state.design.addedFurniture.length >= 200) invalid('addedFurniture', 'מותרות עד 200 תוספות ריהוט.');
-    if ([...BASE_FURNITURE, ...state.design.addedFurniture].some(i => i.id === item.id)) invalid(item.id, 'יש לבחור מזהה ריהוט ייחודי.');
+    if ([...EDITABLE_FURNITURE, ...state.design.addedFurniture].some(i => i.id === item.id)) invalid(item.id, 'יש לבחור מזהה ריהוט ייחודי.');
     return { ...state, design: { ...state.design, addedFurniture: [...state.design.addedFurniture, item] } };
   }
   const id = identifier(input.id, 'id');
@@ -196,7 +291,8 @@ export function applyCadCommand(state: SimulationState, command: CadCommand): Si
     return { ...state, design: { ...state.design, wallEdits: setEdit(state.design.wallEdits, id, edit) } };
   }
   if (type === 'room') {
-    const edit = roomEdit(input.edit, id), base = ROOMS.find(r => r.id === id);
+    const edit = roomEdit(input.edit, id), without = { ...state.design.roomEdits }; delete without[id];
+    const base = resolvedRooms({ ...state, design: { ...state.design, roomEdits: without } }).find(r => r.id === id);
     if (!base) invalid(id, 'יש לבחור חדר קיים.');
     available(base.floor, base.unit, state);
     const edits = { ...state.design.roomEdits }; delete edits[id];

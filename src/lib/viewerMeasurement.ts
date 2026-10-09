@@ -25,6 +25,7 @@ export function visibleSurface(hit: THREE.Intersection, options: VisualRayOption
 export function raycastVisible(ray: THREE.Raycaster, pointer: THREE.Vector2, camera: THREE.Camera,
   targets: THREE.Mesh[], options: VisualRayOptions = {}): THREE.Intersection | undefined {
   ray.near = 0; ray.far = Infinity;
+  ray.layers.enable(1);
   if (!(camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera)) return undefined;
   camera.updateWorldMatrix(true, false);
   for (const target of targets) target.updateWorldMatrix(true, false);
@@ -47,12 +48,12 @@ export function measurementContext(state: SimulationState, unit: UnitId, floor: 
   return JSON.stringify([geometryContext(state, unit, floor), state.neighbors, state.vehicles,
     state.view.isolateFloor, state.view.cutaway, revision]);
 }
-export type SceneSelection = { type: 'opening' | 'furniture' | 'stair' | 'wall' | 'building' | 'neighbor' | 'floor' | 'ceiling'; id: string; unit?: UnitId };
+export type SceneSelection = { type: 'opening' | 'furniture' | 'landscape' | 'stair' | 'wall' | 'building' | 'neighbor' | 'floor' | 'ceiling'; id: string; unit?: UnitId };
 export function sceneSelection(object: THREE.Object3D, normal?: THREE.Vector3): SceneSelection | null {
   const chain: THREE.Object3D[] = [];
   for (let node: THREE.Object3D | null = object; node; node = node.parent) chain.push(node);
   const unit = chain.map(n => n.userData.unit).find(v => v === 'north' || v === 'south') as UnitId | undefined;
-  for (const [type, key] of [['opening', 'openingId'], ['furniture', 'furnitureId'], ['stair', 'stairId'], ['wall', 'wallId'], ['neighbor', 'neighborId']] as const) {
+  for (const [type, key] of [['landscape', 'landscapeId'], ['opening', 'openingId'], ['furniture', 'furnitureId'], ['stair', 'stairId'], ['wall', 'wallId'], ['neighbor', 'neighborId']] as const) {
     const owner = chain.find(n => typeof n.userData[key] === 'string');
     if (owner) return { type, id: owner.userData[key] as string, unit };
   }

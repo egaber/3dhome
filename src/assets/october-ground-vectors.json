@@ -1,0 +1,621 @@
+{
+  "source": "קומת קרקע 8 october .pdf",
+  "sha256": "a7de5e4a1a9ee2a5f11a602a7a90e83148c0191a3bbf2106de16355b21b734cf",
+  "pointsPerMetre": 28.406699901064414,
+  "origin": [
+    595.0247802734375,
+    476.5243225097656
+  ],
+  "crop": [
+    590,
+    472,
+    940,
+    942
+  ],
+  "walls": [
+    {
+      "sourceIndex": 1,
+      "a": [
+        0.0,
+        0.11
+      ],
+      "b": [
+        11.89,
+        0.11
+      ],
+      "thickness": 0.22,
+      "gaps": [
+        {
+          "center": 2.87,
+          "width": 3.2,
+          "kind": "glazing",
+          "label": "ויטרינה לגינה"
+        },
+        {
+          "center": 6.37,
+          "width": 3.2,
+          "kind": "glazing",
+          "label": "ויטרינה לגינה"
+        },
+        {
+          "center": 9.87,
+          "width": 3.2,
+          "kind": "glazing",
+          "label": "ויטרינה לגינה"
+        }
+      ],
+      "units": [
+        "north"
+      ],
+      "splitAtParty": false,
+      "exterior": true
+    },
+    {
+      "sourceIndex": 2,
+      "a": [
+        0.11,
+        0.22
+      ],
+      "b": [
+        0.11,
+        16.16
+      ],
+      "thickness": 0.22,
+      "gaps": [],
+      "units": [
+        "north",
+        "south"
+      ],
+      "splitAtParty": true,
+      "exterior": true
+    },
+    {
+      "sourceIndex": 3,
+      "a": [
+        11.78,
+        0.22
+      ],
+      "b": [
+        11.78,
+        5.84
+      ],
+      "thickness": 0.22,
+      "gaps": [
+        {
+          "center": 1.8,
+          "width": 3.2,
+          "kind": "glazing",
+          "label": "ויטרינה לגינה"
+        },
+        {
+          "center": 4.82,
+          "width": 1.2,
+          "kind": "door",
+          "label": "כניסה צפונית"
+        }
+      ],
+      "units": [
+        "north"
+      ],
+      "splitAtParty": false,
+      "exterior": true
+    },
+    {
+      "sourceIndex": 4,
+      "a": [
+        0.22,
+        16.05
+      ],
+      "b": [
+        6.19,
+        16.05
+      ],
+      "thickness": 0.22,
+      "gaps": [
+        {
+          "center": 4.05,
+          "width": 3.2,
+          "kind": "glazing",
+          "label": "ויטרינה לגינה"
+        }
+      ],
+      "units": [
+        "south"
+      ],
+      "splitAtParty": false,
+      "exterior": true
+    },
+    {
+      "sourceIndex": 5,
+      "a": [
+        6.19,
+        12.43
+      ],
+      "b": [
+        9.49,
+        12.43
+      ],
+      "thickness": 0.22,
+      "gaps": [
+        {
+          "center": 1.5,
+          "width": 2.8,
+          "kind": "glazing",
+          "label": "ויטרינה לגינה"
+        }
+      ],
+      "units": [
+        "south"
+      ],
+      "splitAtParty": false,
+      "exterior": true
+    },
+    {
+      "sourceIndex": 6,
+      "a": [
+        6.08,
+        12.32
+      ],
+      "b": [
+        6.08,
+        15.94
+      ],
+      "thickness": 0.22,
+      "gaps": [
+        {
+          "center": 1.92,
+          "width": 3.2,
+          "kind": "glazing",
+          "label": "ויטרינה לגינה"
+        }
+      ],
+      "units": [
+        "south"
+      ],
+      "splitAtParty": false,
+      "exterior": true
+    },
+    {
+      "sourceIndex": 9,
+      "a": [
+        3.95,
+        4.22
+      ],
+      "b": [
+        3.95,
+        6.74
+      ],
+      "thickness": 0.1,
+      "gaps": [],
+      "units": [
+        "north"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 10,
+      "a": [
+        11.74,
+        5.84
+      ],
+      "b": [
+        11.74,
+        9.52
+      ],
+      "thickness": 0.3,
+      "gaps": [
+        {
+          "center": 1.93,
+          "width": 1.02,
+          "kind": "window",
+          "label": "חלון ממ״ד"
+        }
+      ],
+      "units": [
+        "north"
+      ],
+      "splitAtParty": false,
+      "exterior": true
+    },
+    {
+      "sourceIndex": 11,
+      "a": [
+        8.64,
+        9.395
+      ],
+      "b": [
+        11.59,
+        9.395
+      ],
+      "thickness": 0.25,
+      "gaps": [],
+      "units": [
+        "north"
+      ],
+      "splitAtParty": false,
+      "exterior": true
+    },
+    {
+      "sourceIndex": 12,
+      "a": [
+        9.38,
+        9.52
+      ],
+      "b": [
+        9.38,
+        12.32
+      ],
+      "thickness": 0.22,
+      "gaps": [
+        {
+          "center": 1.47,
+          "width": 1.2,
+          "kind": "door",
+          "label": "כניסה דרומית"
+        }
+      ],
+      "units": [
+        "south"
+      ],
+      "splitAtParty": false,
+      "exterior": true
+    },
+    {
+      "sourceIndex": 15,
+      "a": [
+        3.3,
+        4.27
+      ],
+      "b": [
+        3.9,
+        4.27
+      ],
+      "thickness": 0.1,
+      "gaps": [],
+      "units": [
+        "north"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 18,
+      "a": [
+        6.44,
+        5.84
+      ],
+      "b": [
+        6.44,
+        9.17
+      ],
+      "thickness": 0.2,
+      "gaps": [],
+      "units": [
+        "north",
+        "south"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 28,
+      "a": [
+        3.95,
+        6.94
+      ],
+      "b": [
+        3.95,
+        9.99
+      ],
+      "thickness": 0.1,
+      "gaps": [],
+      "units": [
+        "south"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 48,
+      "a": [
+        8.59,
+        6.04
+      ],
+      "b": [
+        8.59,
+        8.97
+      ],
+      "thickness": 0.1,
+      "gaps": [
+        {
+          "center": 0.5,
+          "width": 0.8,
+          "kind": "door",
+          "label": "ממ״ד"
+        }
+      ],
+      "units": [
+        "north"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 49,
+      "a": [
+        7.34,
+        7.19
+      ],
+      "b": [
+        8.54,
+        7.19
+      ],
+      "thickness": 0.1,
+      "gaps": [
+        {
+          "center": 0.75,
+          "width": 0.7,
+          "kind": "door",
+          "label": "רחצה"
+        }
+      ],
+      "units": [
+        "north"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 50,
+      "a": [
+        0.0,
+        6.84
+      ],
+      "b": [
+        6.34,
+        6.84
+      ],
+      "thickness": 0.2,
+      "gaps": [],
+      "units": [
+        "north",
+        "south"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 51,
+      "a": [
+        8.54,
+        8.97
+      ],
+      "b": [
+        8.54,
+        9.52
+      ],
+      "thickness": 0.2,
+      "gaps": [],
+      "units": [
+        "north",
+        "south"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 52,
+      "a": [
+        6.39,
+        9.17
+      ],
+      "b": [
+        6.39,
+        10.24
+      ],
+      "thickness": 0.1,
+      "gaps": [],
+      "units": [
+        "south"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 53,
+      "a": [
+        6.44,
+        10.19
+      ],
+      "b": [
+        8.54,
+        10.19
+      ],
+      "thickness": 0.1,
+      "gaps": [
+        {
+          "center": 0.45,
+          "width": 0.7,
+          "kind": "door",
+          "label": "שירותי אורחים"
+        }
+      ],
+      "units": [
+        "south"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 54,
+      "a": [
+        8.49,
+        9.52
+      ],
+      "b": [
+        8.49,
+        10.14
+      ],
+      "thickness": 0.1,
+      "gaps": [],
+      "units": [
+        "south"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 56,
+      "a": [
+        6.54,
+        5.94
+      ],
+      "b": [
+        11.59,
+        5.94
+      ],
+      "thickness": 0.2,
+      "gaps": [
+        {
+          "center": 1.46,
+          "width": 0.80501,
+          "kind": "door",
+          "label": "מבואת רחצה"
+        }
+      ],
+      "units": [
+        "north"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 57,
+      "a": [
+        6.54,
+        8.92
+      ],
+      "b": [
+        8.54,
+        8.92
+      ],
+      "thickness": 0.1,
+      "gaps": [],
+      "units": [
+        "north"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 58,
+      "a": [
+        6.59,
+        6.94
+      ],
+      "b": [
+        6.59,
+        8.87
+      ],
+      "thickness": 0.1,
+      "gaps": [],
+      "units": [
+        "north"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 59,
+      "a": [
+        7.39,
+        6.94
+      ],
+      "b": [
+        7.39,
+        7.14
+      ],
+      "thickness": 0.1,
+      "gaps": [],
+      "units": [
+        "north"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 60,
+      "a": [
+        6.64,
+        6.99
+      ],
+      "b": [
+        7.34,
+        6.99
+      ],
+      "thickness": 0.1,
+      "gaps": [],
+      "units": [
+        "north"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 61,
+      "a": [
+        6.39,
+        4.22
+      ],
+      "b": [
+        6.39,
+        5.84
+      ],
+      "thickness": 0.1,
+      "gaps": [],
+      "units": [
+        "north"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 68,
+      "a": [
+        6.54,
+        9.07
+      ],
+      "b": [
+        8.44,
+        9.07
+      ],
+      "thickness": 0.2,
+      "gaps": [],
+      "units": [
+        "north",
+        "south"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    },
+    {
+      "sourceIndex": 69,
+      "a": [
+        6.44,
+        4.27
+      ],
+      "b": [
+        7.04,
+        4.27
+      ],
+      "thickness": 0.1,
+      "gaps": [],
+      "units": [
+        "north"
+      ],
+      "splitAtParty": false,
+      "exterior": false
+    }
+  ]
+}

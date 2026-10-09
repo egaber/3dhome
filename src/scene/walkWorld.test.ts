@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
 import { applyCadCommand, modelWorldPoint, resolveStairGeometry } from '../model/cad';
-import { defaultState } from '../model/plans';
+import { STAIR_HOLES, defaultState } from '../model/plans';
 import { initializeProject } from '../lib/initializeProject';
 import { capsuleBlocker, evaluateFreeWalk, evaluateSupportedWalk, resolveWalkPose, supportContains, type WalkPose, type WalkWorld } from '../lib/supportedWalk';
 import type { SimulationState, UnitId, Vec2 } from '../model/types';
@@ -56,7 +56,7 @@ describe('actual-scene walk snapshot', () => {
   for (const unit of ['south', 'north'] as const) for (const from of ['basement', 'ground'] as const) for (const transformed of [false, true]) {
     it(`${unit} ${from} publicly placed straight stair: 18 risers and reverse floor exit; transformed=${transformed}`, () => {
       let s = applyCadCommand(defaultState(), { type: 'stair', unit, layout: 'straight' });
-      s = applyCadCommand(s, { type: 'stair-position', unit, position: unit === 'south' ? [7, 10.5] : from === 'basement' ? [6, 2] : [4, 4] });
+      s = applyCadCommand(s, { type: 'stair-position', unit, position: unit === 'south' ? [7, 10.5] : from === 'basement' ? [6, 2] : [3.7, 4] });
       s = applyCadCommand(s, { type: 'stair-rotation', unit, rotation: unit === 'south' ? -90 : 90 });
       if (transformed) {
         s.northBearing = -23;
@@ -74,9 +74,12 @@ describe('actual-scene walk snapshot', () => {
   for (const unit of ['south', 'north'] as const) for (const from of ['basement', 'ground'] as const) {
     it(`${unit} ${from} transformed U supports and real round trip`, () => {
       let s = applyCadCommand(defaultState(), { type: 'stair-rotation', unit, rotation: unit === 'south' ? 0 : 180 });
-      s = applyCadCommand(s, { type: 'stair-position', unit, position: unit === 'south' ? [5.19, 8.52] : [4.8, 5.085] });
+      const hole = STAIR_HOLES[unit];
+      s = applyCadCommand(s, { type: 'stair-position', unit, position: [(hole[0][0] + hole[1][0]) / 2, (hole[0][1] + hole[2][1]) / 2] });
       s.northBearing = -23;
-      Object.assign(s.buildings[unit], { width: s.buildings[unit].width * 1.08, depth: s.buildings[unit].depth * 1.06, rotation: 2 });
+      for (const dwelling of ['north', 'south'] as const) {
+        Object.assign(s.buildings[dwelling], { width: s.buildings[dwelling].width * 1.08, depth: s.buildings[dwelling].depth * 1.06, rotation: 2 });
+      }
       const w = snapshot(s), r = route(s, unit, from), seen = new Set<number>();
       let p = resolveWalkPose(w, r.start, s.view.eyeHeight)!;
       expect(p, capsuleBlocker(w, r.start, r.start, s.view.eyeHeight) ?? 'unsupported start').not.toBeNull();
@@ -95,7 +98,7 @@ describe('actual-scene walk snapshot', () => {
   });
   it('fills only the confirmed lower U ground seam with the rendered entry apron', () => {
     const s = defaultState(), w = snapshot(s), g = resolveStairGeometry(s, 'south', 'ground')!;
-    const p = new Vector3(...modelWorldPoint([g.parts[0].center[0], 9.95], 0, 'south', s));
+    const p = new Vector3(...modelWorldPoint(g.parts.find(part => part.kind === 'entry-apron')!.center, 0, 'south', s));
     const contacts = w.supports.filter(t => Math.abs(t.elevation) < .001 && supportContains(t, p));
     expect(contacts).toHaveLength(1); expect(contacts[0]).toMatchObject({ kind: 'entry-apron', partIndex: 19 });
     expect(g.parts.filter(t => t.kind === 'tread')).toHaveLength(18);
@@ -147,10 +150,10 @@ describe('actual-scene walk snapshot', () => {
   }
   it('default north ground approaches are physically obstructed; no blanket exemption', () => {
     const s = defaultState(), w = snapshot(s), r = route(s, 'north', 'ground');
-    expect(capsuleBlocker(w, r.start, r.start, s.view.eyeHeight)).toContain('ground-wall-3-north');
+    expect(capsuleBlocker(w, r.start, r.start, s.view.eyeHeight)).toContain('stair-south-ground');
     expect(resolveWalkPose(w, r.start, s.view.eyeHeight)).toBeNull();
-    const east = r.local([5.96, 6.3], s.view.eyeHeight);
-    expect(capsuleBlocker(w, east, east, s.view.eyeHeight)).toContain('ground-wall-17-north');
+    const east = r.local([6.44, 6.3], s.view.eyeHeight);
+    expect(capsuleBlocker(w, east, east, s.view.eyeHeight)).toContain('ground-wall-35-north');
   });
   it('rejects the discovered north straight basement wall conflict rather than bypassing its doorway frame', () => {
     let s = applyCadCommand(defaultState(), { type: 'stair', unit: 'north', layout: 'straight' });
@@ -160,7 +163,7 @@ describe('actual-scene walk snapshot', () => {
     const p = resolveWalkPose(w, r.start, s.view.eyeHeight)!;
     expect(p).not.toBeNull();
     const d = r.points[4].clone().sub(p.eye); d.y = 0;
-    expect(evaluateSupportedWalk(w, p, d, s.view.eyeHeight)).toMatchObject({ accepted: false, reason: 'collision', blocker: 'opening:north:basement:basement-wall-10-north-opening-0:0' });
+    expect(evaluateSupportedWalk(w, p, d, s.view.eyeHeight)).toMatchObject({ accepted: false, reason: 'collision', blocker: 'wall:north:basement:basement-wall-10-north:0' });
   });
   it('snapshot owns geometry, preserves hidden blockers and adds only the physical balcony locally', () => {
     const s = defaultState(); s.buildings.north.firstFloorVariant = 'open-plan';
@@ -253,7 +256,7 @@ describe('actual-scene walk snapshot', () => {
     let p = resolveWalkPose(w, r.start, s.view.eyeHeight)!;
     for (const target of r.points) p = go(w, p, target, s.view.eyeHeight);
     const motion = r.local([6.7, r.g.parts[17].center[1]]).sub(p.eye); motion.y = 0;
-    expect(evaluateSupportedWalk(w, p, motion, s.view.eyeHeight)).toMatchObject({ accepted: false, reason: 'collision', blocker: 'wall:south:first:first-wall-13-south:0' });
+    expect(evaluateSupportedWalk(w, p, motion, s.view.eyeHeight)).toMatchObject({ accepted: false, reason: 'collision', blocker: 'wall:south:first:first-wall-14-south:0' });
   });
   it('accepts a physically clear endpoint side portal in both directions', () => {
     const s = applyCadCommand(defaultState(), { type: 'stair-rotation', unit: 'north', rotation: 180 });

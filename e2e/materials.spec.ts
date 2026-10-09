@@ -1,6 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 const key = 'dori-solar-studio-v1';
+const coreFiles = async () => Object.keys((JSON.parse(await readFile(new URL('../public/assets/realism/credits.json', import.meta.url), 'utf8')) as { files: Record<string, string> }).files);
 const mode = (page: Page) => page.evaluate(storageKey => JSON.parse(localStorage.getItem(storageKey)!).view.renderMode as string, key);
 const enable = (page: Page) => page.getByRole('group', { name: 'סגנון תצוגה', exact: true }).getByRole('button', { name: 'ריאליסטי', exact: true }).click();
 const ready = (page: Page) => expect(page.locator('.asset-status')).toContainText('חומרי PBR וריהוט מוכנים');
@@ -30,13 +32,14 @@ test('real local PBR and GLB assets render, cache across edits, persist, and sup
   expect(assetRequests).toEqual([]);
   await enable(page); await ready(page);
   await expect.poll(() => pixels(page)).toBeGreaterThan(30);
-  expect(new Set(assetRequests).size).toBe(17);
+  const expectedAssets = await coreFiles();
+  expect([...new Set(assetRequests.map(url => new URL(url).pathname.split('/assets/realism/')[1]))].sort()).toEqual(expectedAssets.slice().sort());
   expect(assetRequests.filter(url => url.endsWith('.glb'))).toHaveLength(2);
   await page.locator('.topbar').getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
   await expect.poll(() => mode(page)).toBe('model'); await expect(page.locator('.asset-status')).toHaveCount(0);
   await page.locator('.topbar').getByRole('button', { name: 'ביצוע מחדש', exact: true }).click();
   await ready(page); await expect.poll(() => mode(page)).toBe('realistic');
-  expect(assetRequests).toHaveLength(17);
+  expect(assetRequests).toHaveLength(expectedAssets.length);
   await page.getByRole('combobox', { name: 'בחרו קומה לצפייה', exact: true }).selectOption('ground');
   await page.getByRole('button', { name: 'מבט על', exact: true }).click();
   await page.getByRole('button', { name: 'סגירת הצ׳אט' }).click();
@@ -45,7 +48,7 @@ test('real local PBR and GLB assets render, cache across edits, persist, and sup
   await page.getByRole('button', { name: 'סיור בחדר', exact: true }).click();
   await expect.poll(() => pixels(page)).toBeGreaterThan(30);
   await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-realistic-interior.png`), fullPage: true });
-  expect(assetRequests).toHaveLength(17);
+  expect(assetRequests).toHaveLength(expectedAssets.length);
   await page.reload(); await ready(page); await expect.poll(() => mode(page)).toBe('realistic');
   expect(external).toEqual([]); expect(errors).toEqual([]);
 });
@@ -57,7 +60,9 @@ test('materials library has credits, fits RTL screens, traps focus and enables t
   const dialog = page.getByRole('dialog', { name: 'חומרים וריהוט מציאותיים', exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('link', { name: 'CC BY 4.0', exact: true })).toHaveAttribute('href', 'https://creativecommons.org/licenses/by/4.0/');
-  await expect(dialog.locator('.material-grid img')).toHaveCount(5);
+  const expectedSwatches = (await coreFiles()).filter(name => name.endsWith('-color.jpg')).sort();
+  await expect(dialog.locator('.material-grid img')).toHaveCount(expectedSwatches.length);
+  expect(await dialog.locator('.material-grid img').evaluateAll(images => images.map(image => new URL((image as HTMLImageElement).src).pathname.split('/').at(-1)).sort())).toEqual(expectedSwatches);
   const overflow = await dialog.evaluate(el => ({ width: el.getBoundingClientRect().width, viewport: innerWidth, overflow: el.scrollWidth - el.clientWidth }));
   expect(overflow.width).toBeLessThanOrEqual(overflow.viewport); expect(overflow.overflow).toBeLessThanOrEqual(1);
   for (let i = 0; i < 18; i++) {

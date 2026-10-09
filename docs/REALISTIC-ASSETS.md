@@ -99,6 +99,9 @@ in the local catalogue sends no request to an outside service.
   © 2020 Wayfair, LLC, Eric Chadwick, CC0. Default authored variant retained.
 - [ambientCG](https://docs.ambientcg.com/license/): researched alternative CC0
   library and external discovery link; not a bundled asset source here.
+- `grass004` colour, roughness and displacement maps come from the project-supplied
+  `Fur+Setting.rar`. The archive did not include redistribution terms; confirm the
+  owner's rights before publishing these files on GitHub Pages.
 
 Original model bytes are unchanged. Runtime transforms correct orientation,
 centre/ground and fit models to editable dimensions, followed by item/dwelling
@@ -111,7 +114,7 @@ and [expanded catalogue](../public/assets/realism/catalog/credits.json).
 - Deploy the **entire build output**, not only generated HTML. Vite copies local
   assets with relative-base support for GitHub Pages. No external runtime asset
   calls; explicit external source/search links are the exception.
-- Core assets ~21.2 MB; extra catalogue/previews ~3.53 MB. Sofa: 46,492 triangles,
+- Core assets ~33.7 MB, including the project-supplied 2K grass color/roughness/height maps; extra catalogue/previews ~3.53 MB. Realistic lawns add one instanced tapered-blade draw call per lawn while retaining a textured fallback. Sofa: 46,492 triangles,
   10,107,912 bytes; original chair: 39,936 triangles, 4,125,648 bytes. Only selected
   extra models load. Catalogue previews load when browsing. File export may load
   assets even in diagram mode so the backup is complete.

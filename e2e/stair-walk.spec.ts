@@ -22,7 +22,7 @@ async function fixture(page: Page, upper = false) {
     s.view = { ...s.view, mode: 'walk', quality: 'standard', renderMode: 'model', planVisible: false, path: false };
     const a = s.northBearing * Math.PI / 180;
     const world = (x: number, z: number) => [x * Math.cos(a) - z * Math.sin(a), x * Math.sin(a) + z * Math.cos(a)];
-    const x = upper ? 5.7875 : 4.5925, z = upper ? 10.45 : 10.45, y = upper ? 5.02 : 1.62;
+    const x = upper ? 5.7875 : 4.5525, z = 10.45, y = upper ? 5.02 : 1.62;
     const p = world(x, z), t = world(x, z - 2);
     const old = JSON.parse(localStorage.getItem(sessionKey)!);
     localStorage.setItem(projectKey, JSON.stringify(s));
@@ -81,10 +81,10 @@ async function turnAround(page: Page) {
 
 test('real forward taps climb all U risers, manual canvas U turn exits first floor and restores context', async ({ page }, info) => {
   const bearing = await fixture(page);
-  await walkTo(page, bearing, 1, 7.4, 'ArrowDown', 'ArrowUp');
+  await walkTo(page, bearing, 1, 7.3, 'ArrowDown', 'ArrowUp');
   const landing = await read(page);
   expect(landing.position[1]).toBeCloseTo(3.32, 1);
-  expect(Math.abs(plan(landing.position, bearing)[1] - 7.4)).toBeLessThan(.065);
+  expect(Math.abs(plan(landing.position, bearing)[1] - 7.3)).toBeLessThan(.065);
   await page.screenshot({ path: info.outputPath('stairs-landing.png'), fullPage: true });
   await page.reload(); await page.locator('.viewer canvas').focus(); await settle(page);
   expect((await read(page)).position).toEqual(landing.position);
@@ -108,9 +108,9 @@ test('real forward taps climb all U risers, manual canvas U turn exits first flo
 test('upper-floor bookmark descends with manual turn and exits to ground without selecting another room', async ({ page }, info) => {
   const bearing = await fixture(page, true);
   await expect(page.locator('.notice')).toContainText('קומה ראשונה');
-  await walkTo(page, bearing, 1, 7.4, 'ArrowDown', 'ArrowUp');
+  await walkTo(page, bearing, 1, 7.3, 'ArrowDown', 'ArrowUp');
   expect((await read(page)).position[1]).toBeCloseTo(3.32, 1);
-  await walkTo(page, bearing, 0, 4.5925, 'ArrowRight', 'ArrowLeft');
+  await walkTo(page, bearing, 0, 4.5525, 'ArrowRight', 'ArrowLeft');
   await turnAround(page);
   await walkTo(page, bearing, 1, 10.45, 'ArrowUp', 'ArrowDown');
   expect((await read(page)).position[1]).toBeCloseTo(1.62, 2);
@@ -259,7 +259,7 @@ test('in-session workspace import reconciles an actually walked mid-stair camera
 
 for (const location of ['last-tread', 'near-exit-floor'] as const) test(`PageUp on ${location} keeps an elevated bookmark and returns to floor walking`, async ({ page }) => {
   const bearing = await fixture(page, true);
-  await walkTo(page, bearing, 1, location === 'last-tread' ? 9.87556 : 10.15, 'ArrowDown', 'ArrowUp');
+  await walkTo(page, bearing, 1, location === 'last-tread' ? 9.71889 : 10.15, 'ArrowDown', 'ArrowUp');
   const start = await read(page); expect(start.position[1]).toBeCloseTo(5.02, 7);
   await expect(page.locator('.notice')).toContainText(location === 'last-tread' ? 'מדרגות' : 'קומה ראשונה');
   await taps(page, 'PageUp', 1);

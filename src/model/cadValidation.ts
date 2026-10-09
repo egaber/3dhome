@@ -1,8 +1,8 @@
 /** Shared persistence/command boundary. Never invoke accessors or copy unknown keys. */
-import { FURNITURE_KINDS, type FurnitureEdit, type FurnitureSpec, type OpeningSpec, type RoomEdit, type Vec2, type WallEdit } from './types';
+import { FURNITURE_KINDS, type FurnitureEdit, type FurnitureSpec, type OpeningSpec, type PlanWall, type RoomEdit, type Vec2, type WallEdit } from './types';
 
-export type OpeningPatch = Partial<Pick<OpeningSpec, 'label' | 'kind' | 'position' | 'width' | 'height' | 'sill' | 'open' | 'shutter' | 'overhang'>>;
-export const OPENING_PATCH_KEYS = ['label', 'kind', 'position', 'width', 'height', 'sill', 'open', 'shutter', 'overhang'] as const;
+export type OpeningPatch = Partial<Pick<OpeningSpec, 'label' | 'kind' | 'position' | 'width' | 'height' | 'sill' | 'open' | 'swing' | 'shutter' | 'overhang'>>;
+export const OPENING_PATCH_KEYS = ['label', 'kind', 'position', 'width', 'height', 'sill', 'open', 'swing', 'shutter', 'overhang'] as const;
 export function openingPatch(value: unknown, path: string): OpeningPatch {
   const input = record(value, path, OPENING_PATCH_KEYS);
   const output: OpeningPatch = {};
@@ -12,6 +12,7 @@ export function openingPatch(value: unknown, path: string): OpeningPatch {
     if (hasOwn(input, key)) output[key] = number(input[key], `${path}.${key}`, 0, maximum);
   }
   if (hasOwn(input, 'open')) output.open = boolean(input.open, `${path}.open`);
+  if (hasOwn(input, 'swing')) output.swing = choice(input.swing, `${path}.swing`, ['positive', 'negative'] as const);
   if (hasOwn(input, 'shutter')) output.shutter = boolean(input.shutter, `${path}.shutter`);
   return output;
 }
@@ -103,6 +104,16 @@ export function wallEdit(value: unknown, path: string): WallEdit {
   if (Math.hypot(b[0] - a[0], b[1] - a[1]) < .05) invalid(path, 'יש להגדיר אורך קיר של לפחות 5 ס״מ.');
   return { a, b, deleted: boolean(input.deleted, `${path}.deleted`) };
 }
+export function customWall(value: unknown, path: string): PlanWall {
+  const input = record(value, path, ['id', 'sourceId', 'unit', 'floor', 'a', 'b', 'thickness', 'exterior', 'retaining', 'openings']);
+  const edit = wallEdit({ a: input.a, b: input.b, deleted: false }, path);
+  if (list(input.openings, `${path}.openings`, 0).length || input.sourceId !== 'custom' || input.retaining !== false) {
+    invalid(path, 'קיר חדש צריך מקור custom, ללא פתחים מוטמעים או קיר תמך.');
+  }
+  return { id: identifier(input.id, `${path}.id`), sourceId: 'custom', unit: choice(input.unit, `${path}.unit`, ['north', 'south']),
+    floor: choice(input.floor, `${path}.floor`, ['ground', 'first', 'basement']), a: edit.a, b: edit.b,
+    thickness: number(input.thickness, `${path}.thickness`, .05, 1), exterior: boolean(input.exterior, `${path}.exterior`), retaining: false, openings: [] };
+}
 export function roomEdit(value: unknown, path: string): RoomEdit {
   const input = record(value, path, ['center', 'width', 'depth', 'rotation', 'deleted']);
   return { center: point(input.center, `${path}.center`), width: number(input.width, `${path}.width`, .4, 30),
@@ -110,13 +121,24 @@ export function roomEdit(value: unknown, path: string): RoomEdit {
     ...(hasOwn(input, 'rotation') ? { rotation: number(input.rotation, `${path}.rotation`, -180, 180) } : {}) };
 }
 export function furnitureSpec(value: unknown, path: string): FurnitureSpec {
-  const input = record(value, path, ['id', 'unit', 'floor', 'kind', 'center', 'rotation', 'width', 'depth', 'height', 'source']);
+  const input = record(value, path, ['id', 'unit', 'floor', 'kind', 'center', 'rotation', 'width', 'depth', 'height', 'source', 'layout', 'shape']);
+  if (input.layout === 'october-ground') {
+    if (input.floor !== 'ground') invalid(`${path}.layout`, 'ריהוט תוכנית אוקטובר שייך לקומת הקרקע בלבד.');
+  } else if (input.layout === 'north-bedrooms') {
+    if (input.unit !== 'north' || input.floor !== 'first') invalid(`${path}.layout`, 'ריהוט תוכנית החדרים שייך לקומה הראשונה בצפונית בלבד.');
+  } else if (input.layout === 'north-ground') {
+    if (input.unit !== 'north' || input.floor !== 'ground') invalid(`${path}.layout`, 'ריהוט תוכנית הקרקע שייך לקומת הקרקע בצפונית בלבד.');
+  } else if (hasOwn(input, 'layout') && (input.unit !== 'south' || !['ground', 'first'].includes(String(input.floor)))) invalid(`${path}.layout`, 'ריהוט החלופה שייך לקרקע או לקומה הראשונה בדרומית בלבד.');
+  if (input.layout === 'south-west' && input.floor !== 'ground') invalid(`${path}.layout`, 'תוכנית המדרגות המערביות משנה את קומת הקרקע בלבד.');
+  if (hasOwn(input, 'shape') && input.kind !== 'dining-table') invalid(`${path}.shape`, 'צורה עגולה מיועדת לשולחן אוכל בלבד.');
   return { id: identifier(input.id, `${path}.id`), unit: choice(input.unit, `${path}.unit`, ['north', 'south']),
     floor: choice(input.floor, `${path}.floor`, ['basement', 'ground', 'first']),
     kind: choice(input.kind, `${path}.kind`, FURNITURE_KINDS), center: point(input.center, `${path}.center`),
     rotation: number(input.rotation, `${path}.rotation`, -180, 180), width: number(input.width, `${path}.width`, .2, 10),
     depth: number(input.depth, `${path}.depth`, .2, 10), height: number(input.height, `${path}.height`, .1, 3),
-    source: choice(input.source, `${path}.source`, ['added']) };
+    source: choice(input.source, `${path}.source`, ['added']),
+    ...(hasOwn(input, 'layout') ? { layout: choice(input.layout, `${path}.layout`, ['south-family', 'south-west', 'north-bedrooms', 'north-ground', 'october-ground'] as const) } : {}),
+    ...(hasOwn(input, 'shape') ? { shape: choice(input.shape, `${path}.shape`, ['round'] as const) } : {}) };
 }
 export function furnitureEdit(value: unknown, path: string, centerBound: 100 | 150 = 150): FurnitureEdit {
   const input = record(value, path, ['center', 'rotation', 'deleted', 'width', 'depth', 'height']);

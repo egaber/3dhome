@@ -1,4 +1,5 @@
 import traced from '../assets/traced-walls.json';
+import legacyGround from '../assets/legacy-ground-walls.json';
 import groundImage from '../assets/ground-plan.png';
 import firstImage from '../assets/first-plan.png';
 import basementImage from '../assets/basement-plan.png';
@@ -7,26 +8,34 @@ import northImage from '../assets/north-detail.png';
 import type { BuildingSettings, FloorId, FurnitureKind, FurnitureSpec, OpeningSpec, PlanWall, Room, SimulationState, UnitId, Vec2 } from './types';
 import { FLOOR_NAMES, UNIT_NAMES } from './types';
 import { normalizeRotation, rotatePlanPoint } from './rotation';
+import { SOUTH_FAMILY_BALCONIES, SOUTH_FAMILY_FIRST_FOOTPRINT, SOUTH_FAMILY_FIRST_WALLS, SOUTH_FAMILY_FURNITURE, SOUTH_FAMILY_ROOMS } from './southFamilyLayout';
+import { SOUTH_WEST_FURNITURE, SOUTH_WEST_ROOMS, southWestRoomFurniture } from './southWestLayout';
+import { NORTH_BEDROOM_BALCONIES, NORTH_BEDROOM_FIRST_FOOTPRINT, NORTH_BEDROOM_FURNITURE, NORTH_BEDROOM_ROOMS,
+  NORTH_BEDROOM_SOUTH_FIRST_FOOTPRINT, NORTH_BEDROOM_WALLS, northBedroomRoomFurniture, northBedroomSouthWalls } from './northBedroomLayout';
+import { NORTH_GROUND_FOOTPRINT, NORTH_GROUND_FURNITURE, NORTH_GROUND_ROOMS, NORTH_GROUND_WALLS, northGroundRoomFurniture } from './northGroundLayout';
+import { OCTOBER_FOOTPRINTS, OCTOBER_FURNITURE, OCTOBER_ROOMS, OCTOBER_WALLS, octoberRoomFurniture } from './octoberGroundPlan';
 
 export const PARTY_Z = 6.84;
 export const BASE_WIDTH = 11.89;
 export const BASE_DEPTH: Record<UnitId, number> = { north: PARTY_Z, south: 16.16 - PARTY_Z };
 export const SLAB = 0.24;
-export const PDF_SCALE = traced.pointsPerMetre;
-export const PDF_ORIGIN: Vec2 = [1873.864990234375, 605.254150390625];
+export const PDF_SCALE = traced.levels.ground.pointsPerMetre;
+export const PDF_ORIGIN: Vec2 = traced.levels.ground.origin as Vec2;
 export const SITE = { left: 0, right: 15.40, back: -12, front: 22.015 };
 export const PLAN_IMAGES = {
-  ground: { url: groundImage, crop: [1300, 130, 2440, 1350], origin: PDF_ORIGIN },
-  first: { url: firstImage, crop: [155, 145, 1220, 1320], origin: [667.77, 605.254150390625] },
-  basement: { url: basementImage, crop: [2510, 160, 3625, 1320], origin: [3049.70166015625, 618.6416015625] },
+  ground: { url: groundImage, crop: traced.levels.ground.crop, origin: PDF_ORIGIN, pointsPerMetre: PDF_SCALE },
+  first: { url: firstImage, crop: [155, 145, 1220, 1320], origin: [667.77, 605.254150390625], pointsPerMetre: traced.pointsPerMetre },
+  basement: { url: basementImage, crop: [2510, 160, 3625, 1320], origin: [3049.70166015625, 618.6416015625], pointsPerMetre: traced.pointsPerMetre },
 } as const;
 export { sheetImage, northImage };
 
 /** Outermost occupied floor outlines, digitized from the three separate plans. */
 export const FOOTPRINTS: Record<FloorId, Record<UnitId, Vec2[]>> = {
   ground: {
-    north: [[0, 0], [11.89, 0], [11.89, 4.44], [10.49, 4.44], [10.49, PARTY_Z], [0, PARTY_Z]],
-    south: [[0, PARTY_Z], [11.89, PARTY_Z], [11.89, 10.09], [9.49, 10.09], [9.49, 12.54], [5.59, 12.54], [5.59, 16.16], [0, 16.16]],
+    north: [[0, 0], [11.89, 0], [11.89, 4.44], [10.49, 4.44], [10.49, 6.07], [11.89, 6.07],
+      [11.89, 9.3], [8.54, 9.3], [8.54, 9.04], [6.44, 9.04], [6.44, PARTY_Z], [0, PARTY_Z]],
+    south: [[0, PARTY_Z], [6.44, PARTY_Z], [6.44, 9.04], [8.54, 9.04], [8.54, 9.3], [9.49, 9.3],
+      [9.49, 12.54], [5.59, 12.54], [5.59, 16.16], [0, 16.16]],
   },
   first: {
     north: [[0, 0], [12.39, 0], [12.39, PARTY_Z], [0, PARTY_Z]],
@@ -45,9 +54,24 @@ export const BALCONIES: Record<UnitId, Vec2[][]> = {
     [[6.34, 13.26], [12.39, 13.26], [12.39, 16.16], [6.34, 16.16]],
   ],
 };
+export function resolvedFootprint(floor: FloorId, unit: UnitId, state: SimulationState): Vec2[] {
+  if (state.design.importedPlan?.unit === unit) return state.design.importedPlan.outline;
+  if (floor === 'ground' && state.design.groundPlan === 'october-2026') return OCTOBER_FOOTPRINTS[unit];
+  if (floor === 'ground' && unit === 'north' && state.buildings.north.northGroundLayout === 'attached') return NORTH_GROUND_FOOTPRINT;
+  if (floor === 'first' && state.buildings.north.firstFloorVariant === 'bedrooms') {
+    return unit === 'north' ? NORTH_BEDROOM_FIRST_FOOTPRINT : NORTH_BEDROOM_SOUTH_FIRST_FOOTPRINT;
+  }
+  return floor === 'first' && unit === 'south' && state.buildings.south.southLayout === 'family'
+    ? SOUTH_FAMILY_FIRST_FOOTPRINT : FOOTPRINTS[floor][unit];
+}
+export function resolvedBalconies(unit: UnitId, state: SimulationState): Vec2[][] {
+  if (state.design.importedPlan?.unit === unit) return [];
+  if (unit === 'north' && state.buildings.north.firstFloorVariant === 'bedrooms') return NORTH_BEDROOM_BALCONIES;
+  return unit === 'south' && state.buildings.south.southLayout === 'family' ? SOUTH_FAMILY_BALCONIES : BALCONIES[unit];
+}
 export const STAIR_HOLES: Record<UnitId, Vec2[]> = {
-  north: [[3.68, 3.55], [5.92, 3.55], [5.92, 6.62], [3.68, 6.62]],
-  south: [[4.06, 7.04], [6.32, 7.04], [6.32, 10.00], [4.06, 10.00]],
+  north: [[4.03, 3.4], [6.34, 3.4], [6.34, 6.74], [4.03, 6.74]],
+  south: [[4, 6.94], [6.34, 6.94], [6.34, 9.84], [4, 9.84]],
 };
 export const LIGHT_WELLS: Record<UnitId, Vec2[][]> = {
   north: [
@@ -61,26 +85,27 @@ export const LIGHT_WELLS: Record<UnitId, Vec2[][]> = {
   ],
 };
 
-type RawWall = { id: string; a: number[]; b: number[]; thickness: number; gaps: { center: number; width: number }[] };
+type RawWall = { id: string; a: number[]; b: number[]; thickness: number; gaps: { center: number; width: number }[];
+  units?: UnitId[]; shared?: boolean; splitAtParty?: boolean; exterior?: boolean };
 const lengthOf = (a: Vec2, b: Vec2) => Math.hypot(b[0] - a[0], b[1] - a[1]);
 
-function traceWalls(): PlanWall[] {
+function traceWalls(levels: Record<FloorId, { walls: unknown[] }> = traced.levels): PlanWall[] {
   const result: PlanWall[] = [];
   for (const floor of ['ground', 'first', 'basement'] as FloorId[]) {
-    for (const raw of traced.levels[floor].walls as RawWall[]) {
+    for (const raw of levels[floor].walls as RawWall[]) {
       const a = raw.a as Vec2;
       const b = raw.b as Vec2;
       // Vertical walls spanning the party line are split per dwelling. The
       // original party wall is shared; duplicating it gives independent editing.
-      const units: UnitId[] = a[1] < PARTY_Z - .015 && b[1] > PARTY_Z + .015
+      const units: UnitId[] = raw.units ?? (a[1] < PARTY_Z - .015 && b[1] > PARTY_Z + .015
         ? ['north', 'south']
         : Math.abs(a[1] - PARTY_Z) < .03 && Math.abs(b[1] - PARTY_Z) < .03
           ? ['north', 'south']
-          : [(a[1] + b[1]) / 2 < PARTY_Z ? 'north' : 'south'];
+          : [(a[1] + b[1]) / 2 < PARTY_Z ? 'north' : 'south']);
       for (const unit of units) {
         const from: Vec2 = [...a];
         const to: Vec2 = [...b];
-        if (Math.abs(a[0] - b[0]) < .01) {
+        if (Math.abs(a[0] - b[0]) < .01 && (!raw.units || raw.splitAtParty)) {
           if (unit === 'north') to[1] = Math.min(to[1], PARTY_Z);
           else from[1] = Math.max(from[1], PARTY_Z);
         }
@@ -92,7 +117,7 @@ function traceWalls(): PlanWall[] {
           Math.min(a[1], b[1]) < -.2 || Math.max(a[0], b[0]) > 12 || Math.min(a[1], b[1]) > 16.15
           || (Math.min(a[1], b[1]) > 12.7 && Math.min(a[0], b[0]) > 8)
         );
-        const exterior = raw.thickness >= .19 && !(horizontal && Math.abs(a[1] - PARTY_Z) < .035);
+        const exterior = raw.exterior ?? (raw.thickness >= .19 && !(horizontal && Math.abs(a[1] - PARTY_Z) < .035));
         const offset = lengthOf(a, from);
         const openings: OpeningSpec[] = raw.gaps.flatMap((gap, index) => {
           if (gap.center < offset || gap.center > offset + length) return [];
@@ -128,6 +153,23 @@ function traceWalls(): PlanWall[] {
 
 export const WALLS = traceWalls();
 export const BASE_OPENINGS = WALLS.flatMap(w => w.openings);
+export const LEGACY_GROUND_WALLS = traceWalls({ ...traced.levels, ground: legacyGround }).filter(wall => wall.floor === 'ground');
+const SOUTH_FAMILY_GROUND_WALLS: PlanWall[] = WALLS.filter(wall => wall.unit === 'south' && wall.floor === 'ground'
+  && !['ground-wall-24-south', 'ground-wall-25-south'].includes(wall.id)).map(wall => {
+  const id = `south-family-${wall.id}`;
+  const a: Vec2 = [...wall.a], b: Vec2 = [...wall.b];
+  if (wall.id === 'ground-wall-29-south') b[1] = 10.64;
+  if (wall.id === 'ground-wall-30-south') { a[1] = 10.59; b[1] = 10.59; }
+  if (wall.id === 'ground-wall-31-south') b[1] = 10.64;
+  return { ...wall, id, provenance: 'proposal', a, b,
+    openings: wall.openings.map(opening => ({ ...opening, id: `south-family-${opening.id}`, wallId: id,
+      ...(wall.id === 'ground-wall-4-south' ? { width: 1.6, position: (4.38 - a[0]) / (b[0] - a[0]), label: 'ויטרינה לגינה · מעבר פנוי לצד המזנון' } : {}),
+      ...(wall.id === 'ground-wall-14-south' ? { width: .95, position: (11.12 - a[1]) / (b[1] - a[1]) } : {}),
+      ...(wall.id === 'ground-wall-30-south' ? { width: .85, position: (7.46 - a[0]) / (b[0] - a[0]) } : {}),
+    })) };
+});
+SOUTH_FAMILY_GROUND_WALLS.push({ id: 'south-family-ground-stair-guard', sourceId: 'south-family-proposal', provenance: 'proposal',
+  unit: 'south', floor: 'ground', a: [2.46, 8.20], b: [2.46, 11.73], thickness: .08, exterior: false, retaining: false, low: 1.05, openings: [] });
 
 // Stable counterparts of the formerly anonymous north-first concept facade.
 // WALLS/BASE_OPENINGS remain the immutable PDF catalog, including all original IDs.
@@ -141,6 +183,8 @@ const conceptSegments: [string, Vec2, Vec2, boolean?][] = [
   ['service-north', [0, 4.55], [2.8, 4.55]], ['service-east', [2.8, 4.55], [2.8, PARTY_Z]],
   ['wc-north', [9.25, 5.05], [11.9, 5.05]], ['wc-west', [9.25, 5.05], [9.25, PARTY_Z]],
 ];
+const NORTH_BEDROOM_SOUTH_WALLS = northBedroomSouthWalls(WALLS);
+const NORTH_BEDROOM_SOUTH_WALL_IDS = new Set(NORTH_BEDROOM_SOUTH_WALLS.map(wall => wall.id));
 export const EDITABLE_WALLS: PlanWall[] = [...WALLS, ...conceptSegments.map(([name, a, b, glazing]): PlanWall => {
   const id = `concept-first-north-${name}`;
   return {
@@ -150,27 +194,30 @@ export const EDITABLE_WALLS: PlanWall[] = [...WALLS, ...conceptSegments.map(([na
       unit: 'north', floor: 'first', kind: 'glazing', position: .5, width: lengthOf(a, b),
       height: 2.55, sill: 0, open: false, shutter: false, overhang: 0, source: 'plan' }] : [],
   };
-})];
+}), ...SOUTH_FAMILY_FIRST_WALLS, ...SOUTH_FAMILY_GROUND_WALLS, ...NORTH_BEDROOM_WALLS,
+...NORTH_BEDROOM_SOUTH_WALLS.filter(wall => wall.id.startsWith('north-bedrooms-south-')), ...NORTH_GROUND_WALLS, ...OCTOBER_WALLS];
 export const EDITABLE_OPENINGS = EDITABLE_WALLS.flatMap(wall => wall.openings);
 
-export function isFloorAvailable(floor: FloorId, building: BuildingSettings): boolean {
+export function isFloorAvailable(floor: FloorId | 'roof', building: BuildingSettings): boolean {
   return building.enabled === true && (building.storeys === 1 || building.storeys === 2)
-    && (floor === 'basement' || floor === 'ground' || (floor === 'first' && building.storeys === 2));
+    && (floor === 'basement' || floor === 'ground' || (floor === 'first' && building.storeys === 2)
+      || (floor === 'roof' && building.storeys === 2 && building.roofEnabled));
 }
 
 const room = (id: string, name: string, unit: UnitId, floor: FloorId, x: number, z: number, width: number, depth: number, kind: Room['kind']): Room => ({ id, name, unit, floor, center: [x, z], width, depth, kind });
 export const ROOMS: Room[] = [
-  room('a-living', 'סלון', 'north', 'ground', 9.6, 2.05, 3.7, 3.5, 'living'),
+  room('a-living', 'סלון', 'north', 'ground', 10.155, 2.22, 3.03, 4, 'living'),
   room('a-dining', 'פינת אוכל', 'north', 'ground', 5.85, 1.9, 3.25, 3.1, 'dining'),
-  room('a-kitchen', 'מטבח', 'north', 'ground', 1.9, 3.65, 3.1, 5.2, 'kitchen'),
-  room('a-entry', 'מבואה', 'north', 'ground', 8.85, 5.95, 2.45, 1.4, 'hall'),
-  room('a-wc', 'שירותי אורחים', 'north', 'ground', 7.03, 4.85, 1.75, 1.05, 'bath'),
-  room('b-living', 'סלון', 'south', 'ground', 2.70, 14.4, 4.7, 2.9, 'living'),
-  room('b-dining', 'פינת אוכל', 'south', 'ground', 2.1, 11.25, 3.5, 2.5, 'dining'),
-  room('b-kitchen', 'מטבח', 'south', 'ground', 2.0, 8.45, 3.35, 2.65, 'kitchen'),
-  room('b-safe', 'ממ״ד', 'south', 'ground', 10.1, 8.36, 2.7, 2.6, 'bedroom'),
-  room('b-bath', 'חדר רחצה', 'south', 'ground', 7.53, 7.86, 1.75, 1.45, 'bath'),
-  room('b-entry', 'מבואה', 'south', 'ground', 7.35, 11.28, 3.2, 1.9, 'hall'),
+  room('a-kitchen', 'מטבח', 'north', 'ground', 2.075, 3.48, 3.71, 6.52, 'kitchen'),
+  room('a-entry', 'מבואה', 'north', 'ground', 8.405, 5.23, 3.73, 1.62, 'hall'),
+  room('a-safe', 'ממ״ד', 'north', 'ground', 10.155, 7.74, 3.03, 2.9, 'bedroom'),
+  room('a-bath', 'חדר רחצה', 'north', 'ground', 7.54, 8.09, 2, 1.7, 'bath'),
+  room('a-bath-entry', 'מבואת רחצה', 'north', 'ground', 7.54, 6.64, 2, 1, 'hall'),
+  room('b-living', 'סלון', 'south', 'ground', 2.795, 14.13, 5.15, 3.62, 'living'),
+  room('b-dining', 'פינת אוכל', 'south', 'ground', 2.06, 11.18, 3.68, 2.28, 'dining'),
+  room('b-kitchen', 'מטבח', 'south', 'ground', 2.06, 8.49, 3.68, 3.1, 'kitchen'),
+  room('b-wc', 'שירותי אורחים', 'south', 'ground', 7.44, 9.64, 2, 1, 'bath'),
+  room('b-entry', 'מבואה', 'south', 'ground', 7.855, 11.28, 2.83, 2.08, 'hall'),
   room('a-bed-west', 'חדר שינה מערבי', 'north', 'first', 1.88, 4.51, 3.1, 4.15, 'bedroom'),
   room('a-bed-ne', 'חדר שינה עורפי', 'north', 'first', 10.25, 1.82, 3.55, 2.95, 'bedroom'),
   room('a-bed-se', 'חדר שינה מזרחי', 'north', 'first', 10.25, 5.08, 3.55, 2.97, 'bedroom'),
@@ -187,10 +234,15 @@ export const ROOMS: Room[] = [
   room('a-basement-room', 'חדר במרתף א׳', 'north', 'basement', 1.8, 1.85, 2.9, 2.7, 'basement'),
   room('b-basement', 'חלל מרתף ב׳', 'south', 'basement', 2.8, 13.4, 4.5, 4.5, 'basement'),
 ];
+export const EDITABLE_ROOMS: Room[] = [...ROOMS, ...SOUTH_FAMILY_ROOMS, ...SOUTH_WEST_ROOMS, ...NORTH_BEDROOM_ROOMS, ...NORTH_GROUND_ROOMS, ...OCTOBER_ROOMS];
 
 /** Illustrative furniture/appliance seeds, not surveyed dimensions or placements.
  * Room-relative defaults intentionally follow room moves/resizes until overridden. */
 function roomFurniture(room: Room): FurnitureSpec[] {
+  if (room.id.startsWith('october-')) return octoberRoomFurniture(room);
+  if (room.id.startsWith('south-west-')) return southWestRoomFurniture(room);
+  if (room.id.startsWith('north-bedrooms-')) return northBedroomRoomFurniture(room);
+  if (room.id.startsWith('north-ground-')) return northGroundRoomFurniture(room);
   const items: FurnitureSpec[] = [];
   const add = (suffix: string, kind: FurnitureKind, x: number, z: number, width: number, depth: number, height: number, rotation = 0) => {
     items.push({ id: `${room.id}-${suffix}`, unit: room.unit, floor: room.floor, kind,
@@ -242,12 +294,23 @@ const CONCEPT_FURNITURE: FurnitureSpec[] = ([
 }));
 
 export const BASE_FURNITURE: FurnitureSpec[] = [...ROOMS.flatMap(roomFurniture), ...CONCEPT_FURNITURE];
+export const EDITABLE_FURNITURE: FurnitureSpec[] = [...BASE_FURNITURE, ...SOUTH_FAMILY_FURNITURE, ...SOUTH_WEST_FURNITURE, ...NORTH_BEDROOM_FURNITURE, ...NORTH_GROUND_FURNITURE, ...OCTOBER_FURNITURE];
 
 /** Fresh resolved logical objects shared by SVG and Three; decorations share the item ID. */
 export function resolvedFurniture(state: SimulationState): FurnitureSpec[] {
   const concept = state.buildings.north.firstFloorVariant === 'open-plan' ? CONCEPT_FURNITURE : [];
-  return [...resolvedRooms(state).flatMap(roomFurniture), ...concept, ...state.design.addedFurniture].flatMap(item => {
+  const family = state.buildings.south.southLayout === 'family' ? SOUTH_FAMILY_FURNITURE : [];
+  const west = state.buildings.south.southLayout === 'west-stair';
+  const added = state.design.addedFurniture.filter(item => {
+    if (item.floor === 'ground' && (state.design.groundPlan === 'october-2026' || item.layout === 'october-ground')) return item.layout === 'october-ground' && state.design.groundPlan === 'october-2026';
+    if (item.unit === 'north' && item.floor === 'ground') return (item.layout === 'north-ground') === (state.buildings.north.northGroundLayout === 'attached');
+    if (item.unit === 'north' && item.floor === 'first') return (item.layout === 'north-bedrooms') === (state.buildings.north.firstFloorVariant === 'bedrooms');
+    return item.unit !== 'south' || item.floor === 'basement'
+      || item.layout === (family.length ? 'south-family' : west && item.floor === 'ground' ? 'south-west' : undefined);
+  });
+  return [...resolvedRooms(state).filter(room => !room.id.startsWith('south-family-')).flatMap(roomFurniture), ...concept, ...family, ...added].flatMap(item => {
     if (!isFloorAvailable(item.floor, state.buildings[item.unit])) return [];
+    if (state.design.groundPlan === 'october-2026' && item.floor === 'ground' && item.id.startsWith('south-family-')) return [];
     const edit = Object.hasOwn(state.design.furnitureEdits, item.id) ? state.design.furnitureEdits[item.id] : undefined;
     if (edit?.deleted) return [];
     return [{ ...item, center: [...(edit?.center ?? item.center)] as Vec2, rotation: edit?.rotation ?? item.rotation,
@@ -279,8 +342,9 @@ export function defaultState(): SimulationState {
   };
 }
 
-export function floorElevation(floor: FloorId, building: BuildingSettings) {
-  return floor === 'basement' ? -building.basementDepth : floor === 'first' ? building.groundHeight : 0;
+export function floorElevation(floor: FloorId | 'roof', building: BuildingSettings) {
+  return floor === 'basement' ? -building.basementDepth : floor === 'first' ? building.groundHeight
+    : floor === 'roof' ? building.groundHeight + (building.storeys === 2 ? building.upperHeight : 0) : 0;
 }
 export function wallHeight(wall: PlanWall, building: BuildingSettings) {
   if (wall.low !== undefined) return wall.low;
@@ -294,19 +358,66 @@ export function wallScale(wall: PlanWall, state: SimulationState) {
   return Math.hypot(dx, dz) / lengthOf(wall.a, wall.b);
 }
 export function resolvedWalls(state: SimulationState): PlanWall[] {
-  return EDITABLE_WALLS.flatMap(wall => {
+  const base: PlanWall[] = EDITABLE_WALLS.flatMap<PlanWall>(wall => {
+    if (state.design.importedPlan?.unit === wall.unit) return [];
     const building = state.buildings[wall.unit];
     if (!isFloorAvailable(wall.floor, building)) return [];
-    if (wall.unit === 'north' && wall.floor === 'first'
-      && (wall.provenance === 'concept') !== (building.firstFloorVariant === 'open-plan')) return [];
+    if (wall.floor === 'ground' && (wall.id.startsWith('october-ground-') !== (state.design.groundPlan === 'october-2026'))) return [];
+    if (wall.id.startsWith('october-ground-')) {
+      const edit = state.design.wallEdits[wall.id];
+      return edit?.deleted ? [] : [{ ...wall, a: [...(edit?.a ?? wall.a)], b: [...(edit?.b ?? wall.b)], openings: wall.openings.map(opening => ({ ...opening })) }];
+    }
+    if (wall.unit === 'north' && wall.floor === 'ground'
+      && wall.id.startsWith('north-ground-') !== (building.northGroundLayout === 'attached')) return [];
+    if (wall.unit === 'south') {
+      const family = building.southLayout === 'family';
+      if (wall.floor !== 'basement' && wall.id.startsWith('south-family-') !== family) return [];
+      if (wall.floor === 'first' && !family) {
+        if (state.buildings.north.firstFloorVariant === 'bedrooms' ? !NORTH_BEDROOM_SOUTH_WALL_IDS.has(wall.id)
+          : wall.id.startsWith('north-bedrooms-south-')) return [];
+      }
+      if (wall.id === 'south-family-ground-wall-13-south') return [];
+      if (building.southLayout === 'west-stair' && ['ground-wall-24-south', 'ground-wall-25-south'].includes(wall.id)) return [];
+    }
+    if (wall.unit === 'north' && wall.floor === 'first') {
+      if (wall.id.startsWith('north-bedrooms-') !== (building.firstFloorVariant === 'bedrooms')) return [];
+      if ((wall.provenance === 'concept') !== (building.firstFloorVariant === 'open-plan')) return [];
+    }
     const edit = state.design.wallEdits[wall.id];
     if (edit?.deleted) return [];
     return [{ ...wall, a: edit ? [...edit.a] : [...wall.a], b: edit ? [...edit.b] : [...wall.b], openings: wall.openings.map(opening => ({ ...opening })) }];
   });
+  return [...base, ...(state.design.addedWalls ?? []).flatMap(wall => {
+    if (!isFloorAvailable(wall.floor, state.buildings[wall.unit]) || state.design.wallEdits[wall.id]?.deleted) return [];
+    const edit = state.design.wallEdits[wall.id];
+    return [{ ...wall, a: [...(edit?.a ?? wall.a)] as Vec2, b: [...(edit?.b ?? wall.b)] as Vec2 }];
+  })];
 }
 export function resolvedRooms(state: SimulationState): Room[] {
-  return ROOMS.flatMap(room => {
+  const imported = state.design.importedPlan;
+  const additions: Room[] = imported ? [{
+    id: 'imported-room', name: 'התוכנית המיובאת', kind: 'hall', floor: 'ground', unit: imported.unit,
+    center: [(Math.min(...imported.outline.map(p => p[0])) + Math.max(...imported.outline.map(p => p[0]))) / 2,
+      (Math.min(...imported.outline.map(p => p[1])) + Math.max(...imported.outline.map(p => p[1]))) / 2],
+    width: Math.max(...imported.outline.map(p => p[0])) - Math.min(...imported.outline.map(p => p[0])),
+    depth: Math.max(...imported.outline.map(p => p[1])) - Math.min(...imported.outline.map(p => p[1])),
+  }] : [];
+  return [...EDITABLE_ROOMS, ...additions].flatMap(room => {
+    if (imported?.unit === room.unit && room.id !== 'imported-room') return [];
     const building = state.buildings[room.unit];
+    if (room.floor === 'ground' && room.id !== 'imported-room' && (room.id.startsWith('october-') !== (state.design.groundPlan === 'october-2026'))) return [];
+    if (room.id.startsWith('october-')) {
+      if (!isFloorAvailable(room.floor, building)) return [];
+      const edit = state.design.roomEdits[room.id];
+      return edit?.deleted ? [] : [{ ...room, ...(edit ?? {}), center: [...(edit?.center ?? room.center)] as Vec2 }];
+    }
+    if (room.unit === 'north' && room.floor === 'ground'
+      && room.id.startsWith('north-ground-') !== (building.northGroundLayout === 'attached')) return [];
+    if (room.unit === 'north' && room.floor === 'first' && room.id.startsWith('north-bedrooms-') !== (building.firstFloorVariant === 'bedrooms')) return [];
+    if (room.id === 'b-bed-east' && state.buildings.north.firstFloorVariant === 'bedrooms') return [];
+    if (room.unit === 'south' && room.floor !== 'basement' && room.id.startsWith('south-family-') !== (building.southLayout === 'family')) return [];
+    if (room.id.startsWith('south-west-') ? building.southLayout !== 'west-stair'
+      : building.southLayout === 'west-stair' && ['b-kitchen', 'b-dining'].includes(room.id)) return [];
     if (!isFloorAvailable(room.floor, building)
       || (room.unit === 'north' && room.floor === 'first' && building.firstFloorVariant === 'open-plan')) return [];
     const edit = state.design.roomEdits[room.id];
@@ -336,7 +447,7 @@ export function areaOf(polygon: Vec2[]) {
   return Math.abs(polygon.reduce((sum, p, i) => { const q = polygon[(i + 1) % polygon.length]; return sum + p[0] * q[1] - q[0] * p[1]; }, 0)) / 2;
 }
 export function buildingArea(unit: UnitId, state: SimulationState) {
-  return areaOf(FOOTPRINTS.ground[unit]) * state.buildings[unit].width / BASE_WIDTH * state.buildings[unit].depth / BASE_DEPTH[unit];
+  return areaOf(resolvedFootprint('ground', unit, state)) * state.buildings[unit].width / BASE_WIDTH * state.buildings[unit].depth / BASE_DEPTH[unit];
 }
 
 export interface FloorAreaRow {
@@ -358,7 +469,7 @@ export function floorAreaSchedule(unit: UnitId, state: SimulationState): FloorAr
   const sz = settings.depth / BASE_DEPTH[unit];
   const rows: FloorAreaRow[] = (['basement', 'ground', 'first'] as FloorId[]).flatMap(floor => {
     if (floor === 'first' && settings.storeys === 1) return [];
-    const gross = areaOf(FOOTPRINTS[floor][unit]) * sx * sz;
+    const gross = areaOf(resolvedFootprint(floor, unit, state)) * sx * sz;
     const wallFootprint = resolvedWalls(state).filter(wall => wall.unit === unit && wall.floor === floor)
       .reduce((sum, wall) => {
         const length = lengthOf(wall.a, wall.b) * wallScale(wall, state);
@@ -368,7 +479,7 @@ export function floorAreaSchedule(unit: UnitId, state: SimulationState): FloorAr
     const openPlanAdjustment = floor === 'first' && unit === 'north' && settings.firstFloorVariant === 'open-plan'
       ? gross * .075 : 0;
     const terraces = floor === 'first'
-      ? BALCONIES[unit].reduce((sum, balcony) => sum + areaOf(balcony) * sx * sz, 0)
+      ? resolvedBalconies(unit, state).reduce((sum, balcony) => sum + areaOf(balcony) * sx * sz, 0)
       : 0;
     return [{ id: floor, label: FLOOR_NAMES[floor], gross, net: Math.max(0, gross - (openPlanAdjustment || wallFootprint)), terraces }];
   });
@@ -391,7 +502,7 @@ export function siteWarnings(state: SimulationState): string[] {
     if (!state.buildings[unit].enabled) continue;
     if (state.buildings[unit].stairLayout === 'straight') warnings.push(`${UNIT_NAMES[unit]}: גרם ישר ארוך עשוי לחצות חדרים וקירות. המידות רעיוניות; אין כאן בדיקת תקן או מרווח ראש.`);
     const floor: FloorId = state.buildings[unit].storeys === 2 ? 'first' : 'ground';
-    const vertices = FOOTPRINTS[floor][unit].map(p => planPoint(p, unit, state));
+    const vertices = resolvedFootprint(floor, unit, state).map(p => planPoint(p, unit, state));
     if (vertices.some(([x, z]) => x < SITE.left - .1 || x > SITE.right || z < SITE.back || z > SITE.front)) {
       warnings.push(`${UNIT_NAMES[unit]} חורגת מתחום העבודה המשוער.`);
     }

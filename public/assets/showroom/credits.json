@@ -1,0 +1,23 @@
+{
+  "license": "CC0-1.0",
+  "licenseUrl": "https://polyhaven.com/license",
+  "models": [
+    { "id": "potted_plant_02", "author": "Rico Cilliers", "source": "https://polyhaven.com/a/potted_plant_02" },
+    { "id": "fern_02", "author": "Rob Tuytel (scanning), Rico Cilliers (modeling)", "source": "https://polyhaven.com/a/fern_02" }
+  ],
+  "files": [
+    { "path": "potted_plant_02/potted_plant_02_1k.gltf", "bytes": 6653, "sha256": "c533dcce0d1aa4379eb7db04601a04983f8df2422b28578de922655a416e64a9" },
+    { "path": "potted_plant_02/textures/potted_plant_02_leaves_diff_1k.jpg", "bytes": 167700, "sha256": "3643dce6e6c0a9f40129bd837ec1a11802e8f43ea43cb29e58219d82e0ac632b" },
+    { "path": "potted_plant_02/potted_plant_02.bin", "bytes": 1852244, "sha256": "9c9812482c78a59789ed32fa842b4cbd9365e09c900c31ebb998e5efe627fe97" },
+    { "path": "potted_plant_02/textures/potted_plant_02_pot_rough_1k.jpg", "bytes": 114886, "sha256": "4e92ad8ee0f098050785d9a025e2c5a7d55bc7a7f7e1916cc7627fc7824a938f" },
+    { "path": "potted_plant_02/textures/potted_plant_02_leaves_rough_1k.jpg", "bytes": 102396, "sha256": "ac8959f70c0e91e77f3cd6fd3f73578b8aed64ac6c33fc34ac027a4e88276960" },
+    { "path": "potted_plant_02/textures/potted_plant_02_pot_diff_1k.jpg", "bytes": 155244, "sha256": "684949bf24821d7e951d46915366b5a388d2e4ccaaa9d5284e718c83604705e9" },
+    { "path": "potted_plant_02/textures/potted_plant_02_leaves_nor_gl_1k.jpg", "bytes": 127232, "sha256": "e0fe090ff7a511729c9bbe59df7288b400430fdab178529443dec75e0f06007d" },
+    { "path": "potted_plant_02/textures/potted_plant_02_pot_nor_gl_1k.jpg", "bytes": 108343, "sha256": "981a68721c8b7b9ac26b96d0210334599d5e8f529362f505082c071a0a58e86c" },
+    { "path": "fern_02/fern_02_1k.gltf", "bytes": 6899, "sha256": "33974295ee19670af4877705fc7d91f33f42d6302f0d44a625e072271223031f" },
+    { "path": "fern_02/textures/fern_02_arm_1k.jpg", "bytes": 280359, "sha256": "ebfb5d76ce9cbdaec20bcd22dce9b755f0b1b8650ef29ca13555e3e6961025d7" },
+    { "path": "fern_02/textures/fern_02_diff_1k.jpg", "bytes": 315705, "sha256": "a828a6e7b4c01c826911e2eac4b3afc7457dab7b3b392a31c681ed88b7d50029" },
+    { "path": "fern_02/textures/fern_02_nor_gl_1k.jpg", "bytes": 367222, "sha256": "45bce132c6e96a0864bc89ab5da51361ab3f4afa83a6669ae499ab5ca811f621" },
+    { "path": "fern_02/fern_02.bin", "bytes": 176176, "sha256": "fe1abb762bcbbc7ad9e86925c8080437a62add257d9280e9142fdc85c226e64c" }
+  ]
+}

@@ -3,9 +3,17 @@
   "levels": {
     "ground": {
       "origin": [
-        1873.864990234375,
-        605.254150390625
+        573.673583984375,
+        478.11798095703125
       ],
+      "pointsPerMetre": 28.373266494950876,
+      "crop": [
+        540,
+        125,
+        1015,
+        1120
+      ],
+      "revision": "קומת קרקע.pdf",
       "walls": [
         {
           "id": "ground-wall-0",
@@ -18,17 +26,23 @@
             0.11
           ],
           "thickness": 0.22,
+          "units": [
+            "north"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": true,
           "gaps": [
             {
               "center": 2.87,
               "width": 3.2
             },
             {
-              "center": 6.37001,
+              "center": 6.37,
               "width": 3.2
             },
             {
-              "center": 9.87001,
+              "center": 9.87,
               "width": 3.2
             }
           ]
@@ -44,6 +58,13 @@
             16.16
           ],
           "thickness": 0.22,
+          "units": [
+            "north",
+            "south"
+          ],
+          "shared": false,
+          "splitAtParty": true,
+          "exterior": true,
           "gaps": []
         },
         {
@@ -57,19 +78,36 @@
             4.44
           ],
           "thickness": 0.22,
-          "gaps": []
+          "units": [
+            "north"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": true,
+          "gaps": [
+            {
+              "center": 1.8,
+              "width": 3.2
+            }
+          ]
         },
         {
-          "id": "ground-wall-3",
+          "id": "ground-wall-34",
           "a": [
-            0.0,
-            6.84
+            10.27,
+            6.18
           ],
           "b": [
-            11.89,
-            6.84
+            11.67,
+            6.18
           ],
-          "thickness": 0.2,
+          "thickness": 0.22,
+          "units": [
+            "north"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": false,
           "gaps": []
         },
         {
@@ -83,6 +121,12 @@
             16.05
           ],
           "thickness": 0.22,
+          "units": [
+            "south"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": true,
           "gaps": [
             {
               "center": 3.45,
@@ -97,10 +141,16 @@
             12.43
           ],
           "b": [
-            9.49001,
+            9.49,
             12.43
           ],
           "thickness": 0.22,
+          "units": [
+            "south"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": true,
           "gaps": [
             {
               "center": 1.8,
@@ -116,9 +166,15 @@
           ],
           "b": [
             5.48,
-            15.94001
+            15.94
           ],
           "thickness": 0.22,
+          "units": [
+            "south"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": true,
           "gaps": [
             {
               "center": 1.92,
@@ -127,42 +183,22 @@
           ]
         },
         {
-          "id": "ground-wall-7",
-          "a": [
-            8.02,
-            4.22
-          ],
-          "b": [
-            8.02,
-            5.52
-          ],
-          "thickness": 0.09999,
-          "gaps": []
-        },
-        {
-          "id": "ground-wall-8",
-          "a": [
-            5.97,
-            4.27
-          ],
-          "b": [
-            7.97001,
-            4.27
-          ],
-          "thickness": 0.1,
-          "gaps": []
-        },
-        {
           "id": "ground-wall-9",
           "a": [
-            3.58,
+            3.98,
             4.22
           ],
           "b": [
-            3.58,
+            3.98,
             6.74
           ],
           "thickness": 0.1,
+          "units": [
+            "north"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": false,
           "gaps": []
         },
         {
@@ -176,6 +212,12 @@
             4.33
           ],
           "thickness": 0.22,
+          "units": [
+            "north"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": true,
           "gaps": []
         },
         {
@@ -186,12 +228,18 @@
           ],
           "b": [
             10.38,
-            6.74
+            6.07
           ],
           "thickness": 0.22,
+          "units": [
+            "north"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": true,
           "gaps": [
             {
-              "center": 1.15,
+              "center": 0.8,
               "width": 1.2
             }
           ]
@@ -199,187 +247,108 @@
         {
           "id": "ground-wall-12",
           "a": [
-            11.74001,
-            6.94
+            11.78,
+            6.07
           ],
           "b": [
-            11.74001,
-            10.09
+            11.78,
+            9.41
           ],
-          "thickness": 0.3,
+          "thickness": 0.22,
+          "units": [
+            "north"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": true,
           "gaps": [
             {
-              "center": 1.38,
-              "width": 1.08
+              "center": 1.75,
+              "width": 1.4
             }
           ]
         },
         {
           "id": "ground-wall-13",
           "a": [
-            9.38,
-            9.965
+            9.49,
+            9.3
           ],
           "b": [
-            11.59001,
-            9.965
+            11.67,
+            9.3
           ],
-          "thickness": 0.25,
+          "thickness": 0.22,
+          "units": [
+            "north",
+            "south"
+          ],
+          "shared": true,
+          "splitAtParty": false,
+          "exterior": false,
           "gaps": []
         },
         {
           "id": "ground-wall-14",
           "a": [
             9.38,
-            10.04
+            9.39
           ],
           "b": [
             9.38,
             12.32
           ],
           "thickness": 0.22,
+          "units": [
+            "south"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": true,
           "gaps": [
             {
-              "center": 1.08,
+              "center": 1.6,
               "width": 1.2
-            }
-          ]
-        },
-        {
-          "id": "ground-wall-15",
-          "a": [
-            6.07,
-            5.47
-          ],
-          "b": [
-            7.97001,
-            5.47
-          ],
-          "thickness": 0.1,
-          "gaps": [
-            {
-              "center": 1.45,
-              "width": 0.7
             }
           ]
         },
         {
           "id": "ground-wall-16",
           "a": [
-            2.93,
+            3.33,
             4.27
           ],
           "b": [
-            3.53,
+            3.93,
             4.27
           ],
           "thickness": 0.1,
-          "gaps": []
-        },
-        {
-          "id": "ground-wall-17",
-          "a": [
-            6.02,
-            4.32
+          "units": [
+            "north"
           ],
-          "b": [
-            6.02,
-            6.74
-          ],
-          "thickness": 0.1,
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": false,
           "gaps": []
         },
         {
           "id": "ground-wall-18",
           "a": [
             6.44,
-            6.94
+            6.74
           ],
           "b": [
             6.44,
-            10.04
+            9.14
           ],
           "thickness": 0.2,
-          "gaps": []
-        },
-        {
-          "id": "ground-wall-19",
-          "a": [
-            6.54001,
-            9.94
+          "units": [
+            "north",
+            "south"
           ],
-          "b": [
-            9.38,
-            9.94
-          ],
-          "thickness": 0.2,
-          "gaps": [
-            {
-              "center": 0.5,
-              "width": 0.81
-            }
-          ]
-        },
-        {
-          "id": "ground-wall-20",
-          "a": [
-            6.54001,
-            6.99
-          ],
-          "b": [
-            8.64,
-            6.99
-          ],
-          "thickness": 0.1,
-          "gaps": []
-        },
-        {
-          "id": "ground-wall-21",
-          "a": [
-            8.59,
-            7.04
-          ],
-          "b": [
-            8.59,
-            9.84
-          ],
-          "thickness": 0.09999,
-          "gaps": [
-            {
-              "center": 2.15,
-              "width": 0.8
-            }
-          ]
-        },
-        {
-          "id": "ground-wall-22",
-          "a": [
-            6.54001,
-            8.69
-          ],
-          "b": [
-            8.54001,
-            8.69
-          ],
-          "thickness": 0.1,
-          "gaps": [
-            {
-              "center": 0.5,
-              "width": 0.7
-            }
-          ]
-        },
-        {
-          "id": "ground-wall-23",
-          "a": [
-            6.59,
-            7.04
-          ],
-          "b": [
-            6.59,
-            8.64
-          ],
-          "thickness": 0.09999,
+          "shared": true,
+          "splitAtParty": false,
+          "exterior": false,
           "gaps": []
         },
         {
@@ -393,6 +362,12 @@
             10.04
           ],
           "thickness": 0.1,
+          "units": [
+            "south"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": false,
           "gaps": []
         },
         {
@@ -406,6 +381,245 @@
             9.99
           ],
           "thickness": 0.1,
+          "units": [
+            "south"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": false,
+          "gaps": []
+        },
+        {
+          "id": "ground-wall-21",
+          "a": [
+            8.59,
+            6.14
+          ],
+          "b": [
+            8.59,
+            8.94
+          ],
+          "thickness": 0.1,
+          "units": [
+            "north"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": false,
+          "gaps": [
+            {
+              "center": 0.55,
+              "width": 0.8
+            }
+          ]
+        },
+        {
+          "id": "ground-wall-22",
+          "a": [
+            6.54,
+            7.19
+          ],
+          "b": [
+            8.54,
+            7.19
+          ],
+          "thickness": 0.1,
+          "units": [
+            "north"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": false,
+          "gaps": [
+            {
+              "center": 0.5,
+              "width": 0.7
+            }
+          ]
+        },
+        {
+          "id": "ground-wall-3",
+          "a": [
+            0.0,
+            6.84
+          ],
+          "b": [
+            6.34,
+            6.84
+          ],
+          "thickness": 0.2,
+          "units": [
+            "north",
+            "south"
+          ],
+          "shared": true,
+          "splitAtParty": false,
+          "exterior": false,
+          "gaps": []
+        },
+        {
+          "id": "ground-wall-27",
+          "a": [
+            8.54,
+            8.94
+          ],
+          "b": [
+            8.54,
+            9.39
+          ],
+          "thickness": 0.2,
+          "units": [
+            "north",
+            "south"
+          ],
+          "shared": true,
+          "splitAtParty": false,
+          "exterior": false,
+          "gaps": []
+        },
+        {
+          "id": "ground-wall-28",
+          "a": [
+            6.54,
+            9.04
+          ],
+          "b": [
+            8.44,
+            9.04
+          ],
+          "thickness": 0.2,
+          "units": [
+            "north",
+            "south"
+          ],
+          "shared": true,
+          "splitAtParty": false,
+          "exterior": false,
+          "gaps": []
+        },
+        {
+          "id": "ground-wall-29",
+          "a": [
+            6.39,
+            9.14
+          ],
+          "b": [
+            6.39,
+            10.24
+          ],
+          "thickness": 0.1,
+          "units": [
+            "south"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": false,
+          "gaps": []
+        },
+        {
+          "id": "ground-wall-30",
+          "a": [
+            6.44,
+            10.19
+          ],
+          "b": [
+            8.54,
+            10.19
+          ],
+          "thickness": 0.1,
+          "units": [
+            "south"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": false,
+          "gaps": [
+            {
+              "center": 0.45,
+              "width": 0.7
+            }
+          ]
+        },
+        {
+          "id": "ground-wall-31",
+          "a": [
+            8.49,
+            9.39
+          ],
+          "b": [
+            8.49,
+            10.14
+          ],
+          "thickness": 0.1,
+          "units": [
+            "south"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": false,
+          "gaps": []
+        },
+        {
+          "id": "ground-wall-32",
+          "a": [
+            8.64,
+            9.29
+          ],
+          "b": [
+            9.49,
+            9.29
+          ],
+          "thickness": 0.2,
+          "units": [
+            "north",
+            "south"
+          ],
+          "shared": true,
+          "splitAtParty": false,
+          "exterior": false,
+          "gaps": []
+        },
+        {
+          "id": "ground-wall-35",
+          "a": [
+            6.44,
+            6.09
+          ],
+          "b": [
+            10.27,
+            6.09
+          ],
+          "thickness": 0.1,
+          "units": [
+            "north"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": false,
+          "gaps": [
+            {
+              "center": 0.6,
+              "width": 0.8
+            }
+          ]
+        },
+        {
+          "id": "ground-wall-33",
+          "a": [
+            6.49,
+            6.14
+          ],
+          "b": [
+            6.49,
+            6.74
+          ],
+          "thickness": 0.1,
+          "units": [
+            "north"
+          ],
+          "shared": false,
+          "splitAtParty": false,
+          "exterior": false,
           "gaps": []
         }
       ]

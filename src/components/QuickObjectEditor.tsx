@@ -9,6 +9,7 @@ import { stairSelection } from '../lib/cadRotation';
 import type { SceneSelection } from '../lib/viewerMeasurement';
 import './viewerCad.css';
 import { ObjectActions } from './ObjectActions';
+import { LandscapeQuickEditor } from './LandscapeEditor';
 
 export type PickedObject = SceneSelection;
 
@@ -26,6 +27,7 @@ export function QuickObjectEditor({ picked, state, onChange, onClose, onSelect }
     catch (cause) { accepted.current = false; setError(cause instanceof Error ? cause.message : 'העריכה לא בוצעה'); }
   };
   const step = .25;
+  if (picked.type === 'landscape') return <LandscapeQuickEditor state={state} id={picked.id} onChange={onChange} onClose={onClose} />;
   if (picked.type === 'building') {
     const unit = picked.id as UnitId;
     const item = state.buildings[unit];

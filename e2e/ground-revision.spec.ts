@@ -1,0 +1,36 @@
+import { expect, test } from '@playwright/test';
+
+test('revised ground rooms and measured openings are available without obsolete facade defaults', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/');
+  await expect(page.locator('.viewer canvas')).toBeVisible();
+  await page.locator('.topbar').getByRole('button', { name: 'עורך 2D', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: 'עורך תוכנית דו־ממדית', exact: true });
+  const toggle = editor.getByRole('button', { name: 'מאפיינים, שכבות ומדרגות' });
+  if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
+  const objects = editor.getByLabel('בחירת אובייקט', { exact: true });
+  await expect(objects.locator('option[value="room:a-wc"]')).toHaveCount(0);
+  await expect(objects.locator('option[value="room:a-safe"]')).toHaveCount(1);
+  await expect(objects.locator('option[value="room:a-bath"]')).toHaveCount(1);
+  await objects.selectOption('room:a-kitchen');
+  await expect(editor.getByLabel('רוחב חדר', { exact: false })).toHaveValue('3.71');
+  await expect(editor.getByLabel('עומק חדר', { exact: false })).toHaveValue('6.52');
+  await objects.selectOption('room:a-safe');
+  await expect(editor.getByLabel('רוחב חדר', { exact: false })).toHaveValue('3.03');
+  await expect(editor.getByLabel('עומק חדר', { exact: false })).toHaveValue('2.9');
+  await page.screenshot({ path: info.outputPath('north-ground.png'), fullPage: true });
+  await objects.selectOption('opening:ground-wall-2-north-opening-0');
+  await expect(editor.getByLabel('רוחב פתח', { exact: false })).toHaveValue('3.2');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('dori-solar-studio-v1')!).addedOpenings)).toEqual([]);
+  await editor.getByLabel('יחידה לעריכה', { exact: false }).selectOption('south');
+  await expect(objects.locator('option[value="room:b-wc"]')).toHaveCount(1);
+  await expect(objects.locator('option[value="room:b-safe"]')).toHaveCount(0);
+  await objects.selectOption('room:b-wc');
+  await expect(editor.getByLabel('רוחב חדר', { exact: false })).toHaveValue('2');
+  await expect(editor.getByLabel('עומק חדר', { exact: false })).toHaveValue('1');
+  await page.screenshot({ path: info.outputPath('revised-ground.png'), fullPage: true });
+  await editor.getByRole('button', { name: 'סגירת עורך', exact: true }).click();
+  await page.screenshot({ path: info.outputPath('revised-model.png'), fullPage: true });
+  expect(errors).toEqual([]);
+});

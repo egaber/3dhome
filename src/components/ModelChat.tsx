@@ -8,14 +8,16 @@ export interface ChatMessage {
   text: string;
 }
 
-export function ModelChat({ messages, onMessagesChange, onCommand }: {
+export function ModelChat({ messages, onMessagesChange, onCommand, collapseRevision = 0 }: {
   messages: ChatMessage[];
   onMessagesChange: (messages: ChatMessage[]) => void;
   onCommand: (command: string) => string;
+  collapseRevision?: number;
 }) {
   const [open, setOpen] = useState(true);
   const [draft, setDraft] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (collapseRevision > 0) setOpen(false); }, [collapseRevision]);
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'nearest' });
   }, [messages, open]);

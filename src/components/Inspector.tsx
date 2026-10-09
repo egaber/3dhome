@@ -56,6 +56,8 @@ import { Button } from './ui/button';
 import { applyCadCommand, getWallApertures } from '../model/cad';
 import { addCadOpening } from '../lib/cadOpening';
 import { StairControls } from './StairControls';
+import { northEntranceStairProposal } from '../model/northStairLayout';
+import { northGroundProposal, northGroundStairProposal } from '../model/northGroundLayout';
 import './viewerCad.css';
 
 export interface InspectorProps {
@@ -589,6 +591,20 @@ function ModelPanel({ state, onChange, selectedUnit, onSelectUnit }: Pick<Inspec
         <p className="warning-note">הזזות וסיבובים קיצוניים עלולים ליצור חפיפה או לנתק את הקיר המשותף. אין כאן מניעת התנגשויות או בדיקת היתר.</p>
 
         <SectionHeading icon={Layers} title="קומות וגבהים" />
+        {selectedUnit === 'north' && <SelectField<'original' | 'attached'>
+          label="חלופת קרקע בבית הצפוני" context={context} value={building.northGroundLayout ?? 'original'}
+          options={[
+            { value: 'original', label: 'תוכנית קודמת' },
+            { value: 'attached', label: 'תוכנית מצורפת · מטבח מערבי ואוכל עגול' },
+          ]} onChange={value => {
+            if (value === 'attached') { onChange(northGroundProposal(state)); return; }
+            const north = { ...building }; delete north.northGroundLayout;
+            onChange({ ...state, buildings: { ...state.buildings, north } });
+          }} />}
+        {selectedUnit === 'north' && <Button size="sm" variant="secondary" disabled={!building.enabled || building.storeys !== 2}
+          onClick={() => onChange(northGroundStairProposal(state))}><ArrowUpRight size={16} />מדרגות לפי תוכנית הקרקע</Button>}
+        {selectedUnit === 'north' && <Button size="sm" variant="secondary" disabled={!building.enabled || building.storeys !== 2}
+          onClick={() => onChange(northEntranceStairProposal(state))}><ArrowUpRight size={16} />מדרגות מול הכניסה</Button>}
         <StairControls state={state} unit={selectedUnit} fromFloor={building.storeys === 2 ? 'ground' : 'basement'}
           onCommand={command => {
             try { onChange(applyCadCommand(state, command)); setCadError(''); }
@@ -602,6 +618,7 @@ function ModelPanel({ state, onChange, selectedUnit, onSelectUnit }: Pick<Inspec
           label="חלופת קומה א׳ בבית הצפוני" context={context} value={building.firstFloorVariant}
           options={[
             { value: 'original', label: 'תוכנית קיימת · חדרי שינה' },
+            { value: 'bedrooms', label: 'תוכנית מצורפת · 3 חדרים ו־3 רחצות' },
             { value: 'open-plan', label: 'חלופה חדשה · סלון, אוכל ואי מטבח פתוחים' },
           ]} onChange={firstFloorVariant => patch({ firstFloorVariant })} />}
         <div className="field-grid">

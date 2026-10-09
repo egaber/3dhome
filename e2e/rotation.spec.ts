@@ -20,7 +20,7 @@ const normalize = (value: number) => ((value + 180) % 360 + 360) % 360 - 180;
 
 for (const [type, id] of [
   ['furniture', 'a-living-sofa'], ['wall', 'ground-wall-2-north'], ['room', 'a-living'],
-  ['stair', 'stair-north-ground'], ['opening', 'added-north-east-glazing'],
+  ['stair', 'stair-north-ground'], ['opening', 'ground-wall-2-north-opening-0'],
 ] as const) test(`2D ${type} rotation changes geometry, is one undoable action and persists`, async ({ page }, testInfo) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   let editor = await open(page);

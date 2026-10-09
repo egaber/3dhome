@@ -8,7 +8,7 @@ const modernFiles = ['modern_arm_chair_01_1k.gltf', 'modern_arm_chair_01.bin',
   ...['pillow', 'legs'].flatMap(part => ['diff', 'nor_gl', 'arm'].map(map => `textures/modern_arm_chair_01_${part}_${map}_1k.jpg`))]
   .map(file => `catalog/modern_arm_chair_01/${file}`);
 export const BASE_RESOURCE_PATHS = [
-  ...SURFACE_ASSETS.flatMap(a => ['color', 'normal', 'roughness'].map(map => `${a.id}-${map}.jpg`)),
+  ...SURFACE_ASSETS.flatMap(a => a.channels.map(map => `${a.id}-${map}.jpg`)),
   ...MODEL_ASSETS.map(a => `${a.id}.glb`),
 ];
 export const RESOURCE_PATHS = [...BASE_RESOURCE_PATHS, ...EXTRA_MODELS.filter(m => m.file.endsWith('.glb')).map(m => m.file), ...modernFiles];

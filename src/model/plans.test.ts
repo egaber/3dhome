@@ -28,16 +28,16 @@ function added(base: OpeningSpec): OpeningSpec {
 describe('measured plan scale and source registration', () => {
   it('uses the printed 11.45 m clear dimension, not the outside wall or upper-floor width', () => {
     // Independent measured PDF endpoints used by the local extraction script.
-    const leftInnerFace = 1880.109375;
-    const rightInnerFace = 2205.09814453125;
+    const leftInnerFace = 579.9157104492188;
+    const rightInnerFace = 904.7896118164062;
     expect((rightInnerFace - leftInnerFace) / PDF_SCALE).toBeCloseTo(11.45, 10);
-    expect(PDF_SCALE).toBeCloseTo(28.38329864901747, 10);
+    expect(PDF_SCALE).toBeCloseTo(28.373266494950876, 10);
     expect(BASE_WIDTH).toBeCloseTo(11.89, 10);
     expect(BASE_WIDTH - 2 * 0.22).toBeCloseTo(11.45, 10);
     expect((leftInnerFace - PDF_ORIGIN[0]) / PDF_SCALE).toBeCloseTo(0.22, 4);
     expect((rightInnerFace - PDF_ORIGIN[0]) / PDF_SCALE).toBeCloseTo(11.67, 4);
     for (const unit of UNITS) {
-      expect(Math.max(...FOOTPRINTS.ground[unit].map(point => point[0]))).toBe(11.89);
+      expect(Math.max(...FOOTPRINTS.ground[unit].map(point => point[0]))).toBe(unit === 'north' ? 11.89 : 9.49);
       expect(Math.max(...FOOTPRINTS.first[unit].map(point => point[0]))).toBe(12.39);
     }
   });
@@ -51,12 +51,13 @@ describe('measured plan scale and source registration', () => {
     expect(originX).toBeLessThan(right);
     expect(originZ).toBeGreaterThan(top);
     expect(originZ).toBeLessThan(bottom);
-    const width = (right - left) / PDF_SCALE;
-    const depth = (bottom - top) / PDF_SCALE;
-    const center: Vec2 = [((right + left) / 2 - originX) / PDF_SCALE, ((bottom + top) / 2 - originZ) / PDF_SCALE];
+    const scale = image.pointsPerMetre;
+    const width = (right - left) / scale;
+    const depth = (bottom - top) / scale;
+    const center: Vec2 = [((right + left) / 2 - originX) / scale, ((bottom + top) / 2 - originZ) / scale];
     for (const unit of UNITS) {
       for (const vertex of FOOTPRINTS[floor][unit]) {
-        const pdf: Vec2 = [image.origin[0] + vertex[0] * PDF_SCALE, image.origin[1] + vertex[1] * PDF_SCALE];
+        const pdf: Vec2 = [image.origin[0] + vertex[0] * scale, image.origin[1] + vertex[1] * scale];
         const uv: Vec2 = [(pdf[0] - left) / (right - left), (pdf[1] - top) / (bottom - top)];
         // A cropped reference plane must not acquire a different per-floor x/z anchor.
         expectPoint([center[0] + (uv[0] - 0.5) * width, center[1] + (uv[1] - 0.5) * depth], vertex);
@@ -76,7 +77,7 @@ describe('measured plan scale and source registration', () => {
     expect(wall).toBeDefined();
     expect(wall.sourceId).toBe('ground-wall-0');
     expect(wall.openings).toHaveLength(3);
-    const sourceCenters = [2.87, 6.37001, 9.87001];
+    const sourceCenters = [2.87, 6.37, 9.87];
     for (const [index, opening] of wall.openings.entries()) {
       expect(opening).toMatchObject({
         id: `ground-wall-0-north-opening-${index}`, wallId: wall.id,

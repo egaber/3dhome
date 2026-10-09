@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { Compass, Download, Grid2X2, Move3D, RotateCcw, Save, Sparkles, Sun, Upload, X } from 'lucide-react';
 import Inspector from './components/Inspector';
 import { FloorEditor2D } from './components/FloorEditor2D';
@@ -27,12 +28,23 @@ import { useViewerMeasurement } from './lib/useViewerMeasurement';
 import { ViewerMeasurementPanel } from './components/ViewerMeasurementPanel';
 import { aggregateInput, isEditableTarget, MOVEMENT_KEYS, navigationKey, type WalkInput } from './lib/walkNavigation';
 import { lookWalk } from './lib/firstPersonNavigation';
-import { evaluateFreeWalk, evaluateSupportedWalk, resolveWalkPose, type WalkPose, type WalkWorld } from './lib/supportedWalk';
+import { capsuleBlocker, evaluateFreeWalk, evaluateSupportedWalk, resolveWalkPose, type WalkPose, type WalkWorld } from './lib/supportedWalk';
 import { buildWalkWorld } from './scene/walkWorld';
 import { applyViewZoom, MAX_VIEW_DISTANCE, MIN_VIEW_DISTANCE, panKeyDirection, panView, readViewZoom, restoredZoom, ZOOM_STEP, zoomKeyDirection } from './lib/viewNavigation';
-import { FOOTPRINTS, PLAN_IMAGES, ROOMS, SITE, defaultState, floorElevation, planPoint, resolvedFurniture, resolvedOpenings, resolvedRooms, resolvedWalls, siteWarnings, trueWorldPoint } from './model/plans';
+import { EDITABLE_ROOMS, FOOTPRINTS, PLAN_IMAGES, ROOMS, SITE, defaultState, floorElevation, planPoint, resolvedFurniture, resolvedOpenings, resolvedRooms, resolvedWalls, siteWarnings, trueWorldPoint } from './model/plans';
 import type { DailyExposure, FloorId, OpeningKind, OpeningSpec, RoomExposure, SimulationState, UnitId } from './model/types';
 import { buildArchitecture, directExposure, disposeArchitecture, readPalette, roomSamplePoints } from './scene/architecture';
+import { createShowroomRenderer } from './scene/showroomRenderer';
+import { roomEntryPoints, roomViewpoint, visitorPosition, type VisitorPosition } from './lib/showroom';
+import { resolveTourRoom } from './lib/roomTour';
+import { CombinedPlans } from './components/CombinedPlans';
+import { duplexCamera, duplexView, type DuplexPreset } from './lib/duplexPresentation';
+import { southFamilyProposal } from './model/southFamilyLayout';
+import { southWestProposal } from './model/southWestLayout';
+import { LEVEL_NAMES } from './model/types';
+import { heldWalkSeconds, tapCoveredUntil, WALK_SPEED, WALK_TAP_DISTANCE } from './lib/walkTiming';
+import { DOOR_REACH, nearbyDoor, openingContext, openingLeafColliders, type DoorPrompt } from './lib/doorInteraction';
+import { isOutside } from './lib/gardenNavigation';
 
 type Runtime = {
   scene: THREE.Scene;
@@ -41,6 +53,7 @@ type Runtime = {
   controls: OrbitControls;
   content: THREE.Group;
   architecture: ReturnType<typeof buildArchitecture> | null;
+  retired: ReturnType<typeof buildArchitecture>[];
   sun: THREE.DirectionalLight;
   ambient: THREE.HemisphereLight;
   raycaster: THREE.Raycaster;
@@ -54,7 +67,7 @@ type Runtime = {
   invalidate: () => void;
 };
 
-type CameraBookmark = { position: [number, number, number]; target: [number, number, number]; up: [number, number, number]; zoom?: number };
+export type CameraBookmark = { position: [number, number, number]; target: [number, number, number]; up: [number, number, number]; zoom?: number };
 type SessionData = { camera: CameraBookmark | null; selectedUnit: UnitId; selectedOpening: string | null; selectedRoom: string; chat: ChatMessage[] };
 const SESSION_KEY = 'dori-solar-studio-session-v1';
 
@@ -69,7 +82,7 @@ function loadSession(): SessionData {
       camera,
       selectedUnit: value.selectedUnit === 'south' ? 'south' : 'north',
       selectedOpening: typeof value.selectedOpening === 'string' ? value.selectedOpening : null,
-      selectedRoom: ROOMS.some(room => room.id === value.selectedRoom) ? value.selectedRoom! : fallback.selectedRoom,
+      selectedRoom: EDITABLE_ROOMS.some(room => room.id === value.selectedRoom) ? value.selectedRoom! : fallback.selectedRoom,
       chat: Array.isArray(value.chat) ? value.chat.filter(message => message && (message.role === 'user' || message.role === 'assistant') && typeof message.text === 'string').slice(-40) : [],
     };
   } catch { return fallback; }
@@ -189,7 +202,7 @@ function applyModelCommand(command: string, state: SimulationState, currentUnit:
   return { state, message: 'לא זיהיתי שינוי. אפשר לבקש גובה קומה/שכן, רוחב או עומק מבנה, הוספת חלון, או לבחור פתח ולשנות סוג, רוחב, גובה, אדן, תריס וגגון.', selectedOpening };
 }
 
-function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCamera, onCameraChange, canvasRef, walkVector, keyboardEnabled, measuring, onMeasuring, selectedUnit, onUnit, measurementRevision, picked, onWalkStatus, roomEntryRevision }: {
+export function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCamera, onCameraChange, canvasRef, walkVector, keyboardEnabled, measuring, onMeasuring, selectedUnit, onUnit, measurementRevision, picked, onWalkStatus, roomEntryRevision, showroom = false, onVisitorChange, deferSceneUpdates = false, onOpeningChange }: {
   state: SimulationState;
   selectedRoom: string;
   onSelectOpening: (id: string) => void;
@@ -207,6 +220,10 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
   picked: PickedObject | null;
   onWalkStatus: (message: string) => void;
   roomEntryRevision: number;
+  showroom?: boolean;
+  onVisitorChange?: (visitor: VisitorPosition) => void;
+  deferSceneUpdates?: boolean;
+  onOpeningChange?: (id: string, open: boolean) => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<Runtime | null>(null);
@@ -214,6 +231,9 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
   const [runtimeReady, setRuntimeReady] = useState(0);
   const [assetRevision, setAssetRevision] = useState(0);
   const [assetStatus, setAssetStatus] = useState('');
+  const [doorPrompt, setDoorPrompt] = useState<DoorPrompt | null>(null);
+  const promptRef = useRef<DoorPrompt | null>(null);
+  const openingChangeRef = useRef(onOpeningChange); openingChangeRef.current = onOpeningChange;
   const [zoom, setZoom] = useState({ level: 0, percent: 100 });
   const [measurementFloor, setMeasurementFloor] = useState<FloorId>('ground');
   const measuringRef = useRef(measuring);
@@ -224,6 +244,11 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
   const walkModeRef = useRef(state.view.mode === 'walk');
   const walkKeys = useRef(new Set<string>());
   const eyeHeightRef = useRef(state.view.eyeHeight);
+  const sceneStateRef = useRef(state); sceneStateRef.current = state;
+  const pausedRef = useRef(deferSceneUpdates); pausedRef.current = deferSceneUpdates;
+  const builtScene = useRef<{ state: SimulationState; assetRevision: number; runtime: Runtime } | null>(null);
+  const visitorCallbackRef = useRef(onVisitorChange); visitorCallbackRef.current = onVisitorChange;
+  const unitRef = useRef(selectedUnit); unitRef.current = selectedUnit;
   eyeHeightRef.current = state.view.eyeHeight;
   const lastWalkStatus = useRef('');
   const reportWalk = useCallback((message: string) => {
@@ -233,11 +258,36 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
   const reconcileWalk = useCallback((runtime: Runtime, fresh = false) => {
     if (fresh) runtime.walkInvalid = false;
     runtime.walkPose = !runtime.walkInvalid && runtime.walkWorld ? resolveWalkPose(runtime.walkWorld, runtime.camera.position, eyeHeightRef.current, fresh ? undefined : runtime.walkPose ?? undefined) : null;
+    if (fresh && runtime.walkPose && isOutside(runtime.walkWorld, runtime.walkPose)) runtime.walkPose = { ...runtime.walkPose, unit: unitRef.current };
     if (walkModeRef.current && !runtime.walkPose) runtime.walkInvalid = true;
     if (walkModeRef.current) reportWalk(runtime.walkPose
-      ? `סיור · ${runtime.walkPose.unit === 'north' ? 'יחידה א׳' : 'יחידה ב׳'} · ${runtime.walkPose.stairId ? 'מדרגות' : runtime.walkPose.floor === 'first' ? 'קומה ראשונה' : runtime.walkPose.floor === 'basement' ? 'מרתף' : 'קומת קרקע'}`
+      ? `סיור · ${runtime.walkPose.unit === 'north' ? 'יחידה א׳' : 'יחידה ב׳'} · ${isOutside(runtime.walkWorld, runtime.walkPose) ? 'גינה וחוץ' : runtime.walkPose.stairId ? 'מדרגות' : runtime.walkPose.floor === 'roof' ? 'עליית גג' : LEVEL_NAMES[runtime.walkPose.floor ?? 'ground']}`
       : 'המיקום אינו תקף להליכה. בחרו חדר ולחצו על כניסה לחדר.');
   }, [reportWalk]);
+  const doorVisible = useCallback((id: string, handle: THREE.Vector3) => {
+    const runtime = runtimeRef.current; if (!runtime?.architecture) return false;
+    const delta = handle.clone().sub(runtime.camera.position);
+    const ray = new THREE.Raycaster(runtime.camera.position, delta.clone().normalize(), .005, delta.length());
+    ray.layers.enable(1);
+    const hit = ray.intersectObjects(runtime.architecture.pickables.filter(mesh => mesh.userData.role !== 'grate-detail'), false)[0];
+    return !hit || hit.object.userData.openingId === id;
+  }, []);
+  const toggleDoor = useCallback((id: string) => {
+    const runtime = runtimeRef.current;
+    if (!runtime?.walkWorld || !walkModeRef.current || !keyboardEnabledRef.current || measuringRef.current || !openingChangeRef.current) return;
+    const context = openingContext(sceneStateRef.current, id);
+    if (!context || context.handle.distanceTo(runtime.camera.position) > DOOR_REACH || !doorVisible(id, context.handle)) {
+      reportWalk('התקרבו לדלת כדי לפתוח או לסגור אותה.'); return;
+    }
+    const open = !(context.opening.open && !context.opening.shutter);
+    const blockers = openingLeafColliders(sceneStateRef.current, id, open);
+    if (capsuleBlocker({ ...runtime.walkWorld, colliders: blockers }, runtime.camera.position, runtime.camera.position, eyeHeightRef.current)) {
+      reportWalk('זוזו מעט מהכנף לפני פתיחה או סגירה של הדלת.'); return;
+    }
+    walkKeys.current.clear(); walkVectorRef.current = { forward: 0, strafe: 0 };
+    openingChangeRef.current(id, open);
+    reportWalk(`${context.opening.label} ${open ? 'נפתחה' : 'נסגרה'}`);
+  }, [doorVisible, reportWalk]);
   useEffect(() => { walkVectorRef.current = walkVector; }, [walkVector]);
   useEffect(() => {
     viewModeRef.current = state.view.mode;
@@ -293,7 +343,7 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
     runtime.controls.target.add(result.delta);
     runtime.walkPose = result.pose;
     runtime.camera.lookAt(runtime.controls.target);
-    reportWalk(`סיור · ${result.pose.unit === 'north' ? 'יחידה א׳' : 'יחידה ב׳'} · ${result.pose.stairId ? 'מדרגות' : result.pose.floor === 'first' ? 'קומה ראשונה' : result.pose.floor === 'basement' ? 'מרתף' : 'קומת קרקע'}`);
+    reportWalk(`סיור · ${result.pose.unit === 'north' ? 'יחידה א׳' : 'יחידה ב׳'} · ${isOutside(runtime.walkWorld, result.pose) ? 'גינה וחוץ' : result.pose.stairId ? 'מדרגות' : result.pose.floor === 'roof' ? 'עליית גג' : LEVEL_NAMES[result.pose.floor ?? 'ground']}`);
     runtime.rememberCamera();
   }, [reportWalk]);
 
@@ -301,7 +351,7 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
     const host = hostRef.current;
     if (!host) return;
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(48, 1, 0.05, 500);
+    const camera = new THREE.PerspectiveCamera(showroom ? 65 : 48, 1, 0.05, 500);
     camera.position.set(29, 25, 32);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: true });
     let renderDirty = true;
@@ -348,6 +398,7 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
     controls.addEventListener('change', rememberCamera);
     const content = new THREE.Group();
     scene.add(content);
+    const presentation = showroom ? createShowroomRenderer(renderer, scene, camera) : null;
     const sun = new THREE.DirectionalLight(0xffffff, 3.2);
     sun.castShadow = true;
     sun.shadow.camera.left = -45;
@@ -361,9 +412,9 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
     const ambient = new THREE.HemisphereLight(0xffffff, 0xffffff, 1.25);
     scene.add(ambient);
     const runtime: Runtime = {
-      scene, camera, renderer, controls, content, architecture: null, sun, ambient,
+      scene, camera, renderer, controls, content, architecture: null, retired: [], sun, ambient,
       raycaster: new THREE.Raycaster(), pointer: new THREE.Vector2(),
-      walkWorld: null, walkPose: null, walkInvalid: false, rememberCamera, assets: createRealisticAssets(renderer.capabilities.getMaxAnisotropy()), environment: null,
+      walkWorld: null, walkPose: null, walkInvalid: false, rememberCamera, assets: createRealisticAssets(renderer.capabilities.getMaxAnisotropy(), showroom), environment: null,
       invalidate: () => { renderDirty = true; },
     };
     runtimeRef.current = runtime;
@@ -374,6 +425,7 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
+      presentation?.resize(width, height);
       renderDirty = true;
     };
     const observer = new ResizeObserver(resize);
@@ -382,13 +434,18 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
     rememberCamera();
     let frame = 0;
     let previous = performance.now();
+    let keyboardCoveredUntil = Infinity;
     const normalizedKey = (event: KeyboardEvent) => navigationKey(event.key, event.code);
-    const clearWalkKeys = () => { walkKeys.current.clear(); walkVectorRef.current = { forward: 0, strafe: 0 }; };
+    const clearWalkKeys = () => { walkKeys.current.clear(); keyboardCoveredUntil = Infinity; walkVectorRef.current = { forward: 0, strafe: 0 }; };
     const keyDown = (event: KeyboardEvent) => {
       const key = normalizedKey(event);
       if (!keyboardEnabledRef.current || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.isComposing || isEditableTarget(event.target)) {
         clearWalkKeys();
         return;
+      }
+      if (showroom && walkModeRef.current && (event.code === 'KeyF' || event.key.toLowerCase() === 'f')) {
+        if (!event.repeat && promptRef.current) toggleDoor(promptRef.current.id);
+        event.preventDefault(); return;
       }
       const zoomDirection = zoomKeyDirection(event.key, event.code);
       if (zoomDirection) {
@@ -411,7 +468,10 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
         if (key === 'q' || key === 'e') {
           lookWalk(camera, controls.target, key === 'q' ? .06 : -.06);
           rememberCamera();
-        } else moveWalk(aggregateInput([...walkKeys.current, key], { ...walkVectorRef.current, vertical: 0 }), .08);
+        } else {
+          moveWalk(aggregateInput([...walkKeys.current, key], { ...walkVectorRef.current, vertical: 0 }), WALK_TAP_DISTANCE);
+          keyboardCoveredUntil = tapCoveredUntil(performance.now());
+        }
       }
       walkKeys.current.add(key);
       event.preventDefault();
@@ -426,10 +486,12 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
       changeZoom(readViewZoom(camera, controls.target, 'walk').level - Math.sign(event.deltaY) * ZOOM_STEP);
     };
     let lookPointer: { id: number; x: number; y: number } | null = null;
+    let tapStart: { x: number; y: number; id: number } | null = null;
     const focusViewer = (event: PointerEvent) => {
       renderer.domElement.focus({ preventScroll: true });
       if (!walkModeRef.current || !keyboardEnabledRef.current || event.button !== 0) return;
       lookPointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      tapStart = { id: event.pointerId, x: event.clientX, y: event.clientY };
       renderer.domElement.setPointerCapture(event.pointerId);
     };
     const pointerLook = (event: PointerEvent) => {
@@ -438,10 +500,19 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
       lookPointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
       rememberCamera();
     };
-    const stopLook = () => { lookPointer = null; };
+    const stopLook = () => { lookPointer = null; tapStart = null; };
+    const releaseLook = (event: PointerEvent) => {
+      if (showroom && tapStart?.id === event.pointerId && Math.hypot(event.clientX - tapStart.x, event.clientY - tapStart.y) < 5 && runtime.architecture) {
+        const rect = host.getBoundingClientRect();
+        const pointer = new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
+        const hit = raycastVisible(new THREE.Raycaster(), pointer, camera, runtime.architecture.pickables, renderer);
+        if (hit?.object.userData.openingId) toggleDoor(hit.object.userData.openingId);
+      }
+      stopLook();
+    };
     renderer.domElement.addEventListener('pointerdown', focusViewer);
     renderer.domElement.addEventListener('pointermove', pointerLook);
-    renderer.domElement.addEventListener('pointerup', stopLook);
+    renderer.domElement.addEventListener('pointerup', releaseLook);
     renderer.domElement.addEventListener('pointercancel', stopLook);
     renderer.domElement.addEventListener('lostpointercapture', stopLook);
     renderer.domElement.addEventListener('wheel', wheel, { passive: false });
@@ -456,7 +527,11 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
       if (walkModeRef.current && keyboardEnabledRef.current) {
         const input = aggregateInput(walkKeys.current, { ...walkVectorRef.current, vertical: 0 });
         if (input.forward || input.strafe || input.vertical) {
-          moveWalk(input, 2.3 * delta);
+          const keyboardMotion = [...walkKeys.current].some(key => MOVEMENT_KEYS.has(key));
+          const seconds = keyboardMotion && !walkVectorRef.current.forward && !walkVectorRef.current.strafe
+            ? heldWalkSeconds(delta, now, keyboardCoveredUntil) : delta;
+          if (seconds > 0) moveWalk(input, WALK_SPEED * seconds);
+          if (now > keyboardCoveredUntil) keyboardCoveredUntil = now;
         }
         const turn = Number(walkKeys.current.has('q')) - Number(walkKeys.current.has('e'));
         if (turn) {
@@ -467,7 +542,7 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
       if (!walkModeRef.current) controls.update();
       // PBR scenes are expensive. Damping/walking/camera changes invalidate;
       // unchanged frames need neither GPU work nor full-scene CPU ray tests.
-      if (!renderDirty) return;
+      if (!renderDirty || pausedRef.current) return;
       renderDirty = false;
       // Keep a neighboring mass from blocking the relevant model when the
       // camera passes through or behind it. Restore all neighbors first.
@@ -487,7 +562,18 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
           }
         }
       }
-      renderer.render(scene, camera);
+      if (presentation) presentation.render(sceneStateRef.current.view.quality === 'high');
+      else renderer.render(scene, camera);
+      for (const retired of runtime.retired.splice(0)) disposeArchitecture(retired);
+      renderer.domElement.dataset.rendered = 'true';
+      if (showroom) {
+        const prompt = walkModeRef.current && !measuringRef.current ? nearbyDoor(sceneStateRef.current, camera.position, controls.target, doorVisible) : null;
+        if (prompt?.id !== promptRef.current?.id || prompt?.open !== promptRef.current?.open) { promptRef.current = prompt; setDoorPrompt(prompt); }
+      }
+      if (visitorCallbackRef.current) {
+        visitorCallbackRef.current({ ...visitorPosition({ position: camera.position.toArray(), target: controls.target.toArray(), up: camera.up.toArray() },
+          sceneStateRef.current, runtime.walkPose?.unit ?? unitRef.current, runtime.walkPose?.floor), outside: isOutside(runtime.walkWorld, runtime.walkPose) });
+      }
     };
     render();
     return () => {
@@ -498,7 +584,7 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
       document.removeEventListener('visibilitychange', visibilityChange);
       renderer.domElement.removeEventListener('pointerdown', focusViewer);
       renderer.domElement.removeEventListener('pointermove', pointerLook);
-      renderer.domElement.removeEventListener('pointerup', stopLook);
+      renderer.domElement.removeEventListener('pointerup', releaseLook);
       renderer.domElement.removeEventListener('pointercancel', stopLook);
       renderer.domElement.removeEventListener('lostpointercapture', stopLook);
       renderer.domElement.removeEventListener('wheel', wheel);
@@ -512,6 +598,8 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
       runtime.assets.dispose();
       runtime.scene.environment = null;
       runtime.environment?.dispose();
+      presentation?.dispose();
+      for (const retired of runtime.retired.splice(0)) disposeArchitecture(retired);
       renderer.dispose();
       renderer.domElement.remove();
       canvasRef.current = null;
@@ -536,8 +624,16 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
   useEffect(() => {
       const runtime = runtimeRef.current;
       if (!runtime) return undefined;
+      if (deferSceneUpdates) return undefined;
+      if (builtScene.current?.runtime === runtime && builtScene.current.state === state && builtScene.current.assetRevision === assetRevision) {
+        return undefined;
+      }
+      builtScene.current = { state, assetRevision, runtime };
       runtime.walkWorld = null;
-      if (runtime.architecture) disposeArchitecture(runtime.architecture);
+      if (runtime.architecture) {
+        // Keep shader programs alive until the replacement scene has rendered.
+        runtime.architecture.group.removeFromParent(); runtime.retired.push(runtime.architecture);
+      }
       runtime.content.traverse(object => {
         if (!(object instanceof THREE.Mesh || object instanceof THREE.Line)) return;
         object.geometry.dispose();
@@ -549,20 +645,20 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
       });
       runtime.content.clear();
       const palette = readPalette();
-      runtime.scene.background = new THREE.Color(palette.background);
+      runtime.scene.background = new THREE.Color(showroom ? 0xc8d8df : palette.background);
       runtime.renderer.toneMapping = state.view.renderMode === 'realistic' ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
-      runtime.renderer.toneMappingExposure = state.view.renderMode === 'realistic' ? 1.12 : 1;
+      runtime.renderer.toneMappingExposure = state.view.renderMode === 'realistic' ? (showroom ? .95 : 1.12) : 1;
       if (state.view.renderMode === 'realistic' && !runtime.environment) {
         const generator = new THREE.PMREMGenerator(runtime.renderer), room = new RoomEnvironment();
         runtime.environment = generator.fromScene(room, .04);
         room.dispose(); generator.dispose();
       }
       runtime.scene.environment = state.view.renderMode === 'realistic' && !state.view.directOnly ? runtime.environment!.texture : null;
-      runtime.scene.environmentIntensity = .35;
-      const architecture = buildArchitecture(state, palette, runtime.assets);
+      runtime.scene.environmentIntensity = showroom ? .85 : .35;
+      const architecture = buildArchitecture(state, palette, runtime.assets, showroom);
       runtime.architecture = architecture;
       runtime.content.add(architecture.group);
-      runtime.walkWorld = buildWalkWorld(state, architecture);
+      runtime.walkWorld = buildWalkWorld(state, architecture, showroom);
       reconcileWalk(runtime);
       const isolation = state.view.isolateFloor;
       if (isolation !== 'none') {
@@ -652,12 +748,23 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
         runtime.sun.position.copy(direction.clone().multiplyScalar(80));
         runtime.sun.target.position.set(6, 0, 6);
         runtime.sun.visible = solar.aboveHorizon;
-        runtime.sun.color.set(palette.warning);
-        runtime.sun.intensity = state.view.directOnly ? 5.2 : 4.4;
-        runtime.ambient.intensity = state.view.directOnly ? 0.08 : .58;
+        runtime.sun.color.set(showroom ? (solar.altitude < 20 ? 0xffd4a0 : 0xfff2dd) : palette.warning);
+        runtime.sun.intensity = showroom ? (solar.altitude < 20 ? 2.2 : 3.6) : state.view.directOnly ? 5.2 : 4.4;
+        runtime.ambient.intensity = showroom ? (solar.aboveHorizon ? 1.45 : .24) : state.view.directOnly ? 0.08 : .58;
+        if (showroom) {
+          runtime.ambient.color.set(0xe6f0ff); runtime.ambient.groundColor.set(0x96846d);
+          runtime.scene.environmentIntensity = solar.aboveHorizon ? .85 : .22;
+          const sky = new Sky(); sky.scale.setScalar(200);
+          sky.material.uniforms.turbidity.value = 3.5;
+          sky.material.uniforms.rayleigh.value = 1.2;
+          sky.material.uniforms.mieCoefficient.value = .005;
+          sky.material.uniforms.mieDirectionalG.value = .8;
+          sky.material.uniforms.sunPosition.value.copy(direction);
+          runtime.content.add(sky);
+        }
         sunlightPlane.visible = solar.aboveHorizon;
 
-        if (solar.aboveHorizon) {
+        if (solar.aboveHorizon && !showroom) {
           // Draw deterministic projected silhouettes over the plan. The PDF is
           // an unlit texture, so relying on its material to receive shadows is
           // not sufficient for a clearly readable planning overlay.
@@ -745,7 +852,7 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
       runtime.renderer.shadowMap.needsUpdate = true;
       runtime.invalidate();
       return undefined;
-  }, [runtimeReady, state, assetRevision]);
+  }, [runtimeReady, state, assetRevision, deferSceneUpdates]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -790,7 +897,7 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
       runtime.controls.update();
       return;
     }
-    const room = ROOMS.find(item => item.id === selectedRoom);
+    const room = resolvedRooms(state).find(item => item.id === selectedRoom) ?? resolveTourRoom(state, selectedUnit, selectedRoom);
     if (!room) return;
     const p = planPoint(room.center, room.unit, state);
     const world = trueWorldPoint(p, state);
@@ -798,6 +905,21 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
     runtime.camera.position.set(world[0], elevation + state.view.eyeHeight, world[1]);
     runtime.controls.target.set(world[0] + 2, elevation + Math.max(.4, state.view.eyeHeight - .17), world[1]);
     runtime.camera.lookAt(runtime.controls.target);
+    if (showroom) {
+      const view = roomViewpoint(state, room.id);
+      if (view) { runtime.controls.target.fromArray(view.target); runtime.camera.position.fromArray(view.position); }
+      if (runtime.walkWorld) {
+        const candidates = [runtime.camera.position.clone(), ...roomEntryPoints(room).map(local => {
+          const point = trueWorldPoint(planPoint(local, room.unit, state), state);
+          return new THREE.Vector3(point[0], elevation + state.view.eyeHeight, point[1]);
+        })];
+        for (const candidate of candidates) {
+          if (!resolveWalkPose(runtime.walkWorld, candidate, state.view.eyeHeight)) continue;
+          runtime.camera.position.copy(candidate); break;
+        }
+      }
+      runtime.camera.lookAt(runtime.controls.target);
+    }
     reconcileWalk(runtime, true);
     runtime.rememberCamera();
     // Camera placement is intentionally tied only to an explicit view-mode or
@@ -835,6 +957,8 @@ function Viewer({ state, selectedRoom, onSelectOpening, onPickObject, restoredCa
 
   return <>
     <div ref={hostRef} className="viewer" aria-label="תצוגת תלת־ממד אינטראקטיבית" />
+    {showroom && keyboardEnabled && !measuring && doorPrompt && <button className="door-prompt" type="button" data-opening-id={doorPrompt.id} data-open={doorPrompt.open}
+      onClick={() => toggleDoor(doorPrompt.id)}><kbd>F</kbd> {doorPrompt.open ? 'סגירת' : 'פתיחת'} {doorPrompt.label}</button>}
     {state.view.renderMode === 'realistic' && <div className="asset-status" role="status" aria-live="polite">{assetStatus}</div>}
     <ZoomControls level={zoom.level} percent={zoom.percent} onChange={changeZoom} />
     <Button className="viewer-measure-toggle" variant="secondary" aria-pressed={measuring} aria-expanded={measuring} aria-controls="viewer-measurement-panel"
@@ -867,12 +991,16 @@ export default function App() {
   const [camera, setCamera] = useState<CameraBookmark | null>(initialSession.camera);
   const [cameraRestore, setCameraRestore] = useState<CameraBookmark | null>(initialSession.camera);
   const [chat, setChat] = useState<ChatMessage[]>(initialSession.chat);
+  const [chatCollapseRevision, setChatCollapseRevision] = useState(0);
   const [picked, setPicked] = useState<PickedObject | null>(null);
   const [exposure, setExposure] = useState<RoomExposure | null>(null);
   const [daily, setDaily] = useState<DailyExposure | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [sources, setSources] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [combinedOpen, setCombinedOpen] = useState(() => new URLSearchParams(location.search).get('plans') === 'combined');
+  const [duplex, setDuplex] = useState<DuplexPreset | null>(null);
+  const [unitScope, setUnitScope] = useState<'both' | UnitId>('both');
   const [renderOpen, setRenderOpen] = useState(false);
   const [materialsOpen, setMaterialsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -883,7 +1011,7 @@ export default function App() {
   const [walkStatus, setWalkStatus] = useState('');
   const [roomEntryRevision, setRoomEntryRevision] = useState(0);
   const stopTouchWalk = useCallback(() => setWalkVector(previous => previous.forward || previous.strafe ? { forward: 0, strafe: 0 } : previous), []);
-  useEffect(() => { stopTouchWalk(); }, [state.view.mode, editorOpen, renderOpen, sources, historyOpen, materialsOpen, measuring, stopTouchWalk]);
+  useEffect(() => { stopTouchWalk(); }, [state.view.mode, editorOpen, renderOpen, sources, historyOpen, materialsOpen, combinedOpen, measuring, stopTouchWalk]);
   useEffect(() => {
     const visibility = () => { if (document.visibilityState !== 'visible') stopTouchWalk(); };
     window.addEventListener('blur', stopTouchWalk);
@@ -900,7 +1028,7 @@ export default function App() {
   const historyControls = { canUndo: history.canUndo, canRedo: history.canRedo, onUndo: undoAction, onRedo: redoAction, onShowHistory: showHistory };
   useEffect(() => {
     const keyboard = (event: KeyboardEvent) => {
-      if ((renderOpen || sources || materialsOpen) && !historyOpen) return;
+      if ((renderOpen || sources || materialsOpen || combinedOpen) && !historyOpen) return;
       const action = historyShortcut(event, isEditableTarget(event.target));
       if (!action) return;
       event.preventDefault();
@@ -909,7 +1037,7 @@ export default function App() {
     };
     window.addEventListener('keydown', keyboard);
     return () => window.removeEventListener('keydown', keyboard);
-  }, [history.canUndo, history.canRedo, undoAction, redoAction, renderOpen, sources, materialsOpen, historyOpen]);
+  }, [history.canUndo, history.canRedo, undoAction, redoAction, renderOpen, sources, materialsOpen, historyOpen, combinedOpen]);
 
   const persist = useCallback((next: SimulationState) => {
     const saved = saveProject(next);
@@ -941,10 +1069,21 @@ export default function App() {
   }, [state, selectedRoom]);
 
   const enterRoom = useCallback((id: string) => {
+    const room = resolvedRooms(currentProject.current).find(item => item.id === id);
+    if (room) setSelectedUnit(room.unit);
     setSelectedRoom(id);
     setRoomEntryRevision(value => value + 1);
-    setState(current => ({ ...current, view: { ...current.view, mode: 'walk', cutaway: resolvedRooms(current).find(room => room.id === id)?.floor ?? 'ground' } }));
+    setState(current => ({ ...current, view: { ...current.view, mode: 'walk', isolateFloor: 'none', cutaway: resolvedRooms(current).find(room => room.id === id)?.floor ?? 'ground' } }));
   }, []);
+  const presentDuplex = (preset: DuplexPreset, scope = unitScope) => {
+    const aspect = (canvasRef.current?.clientWidth ?? 1440) / (canvasRef.current?.clientHeight ?? 900);
+    setState(current => ({ ...current, view: duplexView(current.view, preset) }), 'הדמיית תוכניות');
+    setCameraRestore(duplexCamera(state, preset, aspect, scope));
+    setDuplex(preset); setCombinedOpen(false); setPicked(null); setMeasuring(false);
+    setChatCollapseRevision(value => value + 1);
+    setNotice(scope === 'north' && preset === 'first' && state.buildings.north.firstFloorVariant === 'bedrooms'
+      ? 'קומה א׳ צפונית לפי התמונה המצורפת · ריהוט ומידות לפי המודל' : 'הדמיית שתי היחידות · התוכנית והחלופה הנוכחיות');
+  };
 
   const analyze = useCallback(() => {
     const room = resolvedRooms(state).find(item => item.id === selectedRoom);
@@ -1032,7 +1171,9 @@ export default function App() {
       <div className="solar-pill"><Compass size={16} /><bdi>{currentSolar ? `${currentSolar.localTimeLabel} · ${currentSolar.altitude.toFixed(1)}°` : 'זמן לא תקין'}</bdi></div>
       <div className="toolbar">
         <HistoryControls {...historyControls} />
+        <Button size="sm" variant="ghost" onClick={() => setCombinedOpen(true)}><Grid2X2 size={15} /> תוכנית משולבת</Button>
         <Button size="sm" variant="ghost" onClick={() => setEditorOpen(true)}><Grid2X2 size={15} /> עורך 2D</Button>
+        <a className="button" href="#v2" style={{ fontSize: 12 }} aria-label="פתיחת חוויית הבית החדשה V2" title="V2 · חוויית הבית">V2</a>
         <Button size="sm" variant="ghost" onClick={() => setRenderOpen(true)}><Sparkles size={15} /> הדמיה AI</Button>
         <Button size="sm" variant="ghost" onClick={() => { if (persist(state)) setNotice('הפרויקט נשמר בדפדפן'); }}><Save size={15} /> שמירה</Button>
         <Button size="sm" variant="ghost" onClick={exportWorkspace}><Download size={15} /> שמירת קובץ</Button>
@@ -1087,14 +1228,15 @@ export default function App() {
           measuring={measuring} onMeasuring={value => { setMeasuring(value); setPicked(null); setWalkVector({ forward: 0, strafe: 0 }); }}
           selectedUnit={selectedUnit} onUnit={setSelectedUnit} measurementRevision={measurementRevision} picked={picked}
           onWalkStatus={setWalkStatus} roomEntryRevision={roomEntryRevision}
-          keyboardEnabled={!editorOpen && !renderOpen && !sources && !historyOpen && !materialsOpen} />
+          keyboardEnabled={!editorOpen && !renderOpen && !sources && !historyOpen && !materialsOpen && !combinedOpen} />
         <div className="view-modes" role="group" aria-label="מצב תצוגה">
           {([['orbit', 'סיבוב'], ['plan', 'מבט על'], ['walk', 'סיור בחדר']] as const).map(([mode, label]) => <Button key={mode} size="sm" variant={state.view.mode === mode ? 'primary' : 'secondary'} onClick={() => {
             if (mode === 'orbit') setCameraRestore({ position: [29, 25, 32], target: [6, 3, 6], up: [0, 1, 0] });
             else if (mode === 'plan') setCameraRestore({ position: [6, 48, 6], target: [6, 0, 6], up: [0, 0, -1] });
             else {
-              const room = ROOMS.find(item => item.id === selectedRoom);
+              const room = resolveTourRoom(state, selectedUnit, selectedRoom);
               if (room) {
+                setSelectedRoom(room.id); setSelectedUnit(room.unit);
                 const point = trueWorldPoint(planPoint(room.center, room.unit, state), state);
                 const elevation = floorElevation(room.floor, state.buildings[room.unit]);
                 setCameraRestore({
@@ -1104,8 +1246,14 @@ export default function App() {
                 });
               }
             }
-            setState(current => ({ ...current, view: { ...current.view, mode } }));
+            setState(current => ({ ...current, view: { ...current.view, mode,
+              ...(mode === 'walk' ? { isolateFloor: 'none', cutaway: resolveTourRoom(current, selectedUnit, selectedRoom)?.floor ?? 'ground' } : {}) } }));
           }}>{label}</Button>)}
+          <select aria-label="יחידה לסיור" value={selectedUnit} onChange={event => {
+            const unit = event.target.value as UnitId, room = resolveTourRoom(state, unit, selectedRoom);
+            setSelectedUnit(unit);
+            if (room && state.view.mode === 'walk') { setSelectedRoom(room.id); setRoomEntryRevision(value => value + 1); }
+          }}><option value="north" disabled={!state.buildings.north.enabled}>צפונית</option><option value="south" disabled={!state.buildings.south.enabled}>דרומית</option></select>
         </div>
         <div className="render-modes" role="group" aria-label="סגנון תצוגה">
           <Button size="sm" variant={state.view.renderMode === 'model' ? 'primary' : 'secondary'} onClick={() => setState(current => ({ ...current, view: { ...current.view, renderMode: 'model' } }))}>מודל</Button>
@@ -1115,9 +1263,22 @@ export default function App() {
         {picked && !measuring && <QuickObjectEditor picked={picked} state={state} onChange={setState} onClose={() => setPicked(null)} onSelect={setPicked} />}
         </div>
         <div className="stage-status" dir="rtl">
+          {duplex && <div className="duplex-presentation-controls" role="group" aria-label="הדמיית שתי היחידות">
+            <select aria-label="יחידות בהדמיה" value={unitScope} onChange={event => { const scope = event.target.value as 'both' | UnitId; setUnitScope(scope); presentDuplex(duplex, scope); }}>
+              <option value="both">שתי היחידות</option><option value="north">הצפונית בלבד</option><option value="south">הדרומית בלבד</option></select>
+            {([['exterior', 'מבנה מלא'], ['ground', 'קרקע'], ['first', 'קומה ראשונה']] as const).map(([preset, label]) =>
+              <Button key={preset} size="sm" variant={duplex === preset ? 'primary' : 'secondary'} onClick={() => presentDuplex(preset)}>{label}</Button>)}
+            <Button size="sm" variant="secondary" onClick={() => {
+              const canvas = canvasRef.current;
+              if (!canvas) { setNotice('התצוגה עדיין אינה מוכנה.'); return; }
+              const link = document.createElement('a'); link.href = canvas.toDataURL('image/png'); link.download = `duplex-${duplex}.png`; link.click();
+            }}>שמירת תמונת הדמיה</Button>
+            <Button size="sm" variant="ghost" onClick={() => setDuplex(null)}>סגירת הדמיה</Button>
+          </div>}
           {warnings.length > 0 && <details className="site-warning"><summary>אזהרות ({warnings.length})</summary><div>{warnings.map(warning => <p key={warning}>{warning}</p>)}</div></details>}
           <div className="notice" role={saveError ? 'alert' : 'status'}>{saveError || (backup.connected ? backup.status : state.view.mode === 'walk' && walkStatus ? walkStatus : notice)}</div>
-          <div className="stage-chat" hidden={measuring || !!picked}><ModelChat messages={chat} onMessagesChange={setChat} onCommand={runChatCommand} /></div>
+          <div className="stage-chat" hidden={measuring || !!picked}><ModelChat messages={chat} onMessagesChange={setChat}
+            onCommand={runChatCommand} collapseRevision={chatCollapseRevision} /></div>
           <div className="hint">{state.view.mode === 'walk'
             ? <><Move3D size={14} /> חצים / WASD / בקרי הליכה — מדרגות אוטומטית · Q/E או גרירה לסיבוב · Page Up/Down לגובה חופשי</>
             : <>חצים לתנועה · <bdi>+ / −</bdi> או המחוון לזום · גרירה לסיבוב</>}</div>
@@ -1125,7 +1286,7 @@ export default function App() {
       </div>
       <Inspector state={state} onChange={setState} selectedUnit={selectedUnit} onSelectUnit={setSelectedUnit}
         selectedOpening={selectedOpening} onSelectOpening={setSelectedOpening} selectedRoom={selectedRoom}
-        onSelectRoom={setSelectedRoom} onEnterRoom={enterRoom} onAnalyze={analyze} analyzing={analyzing}
+        onSelectRoom={id => { const room = resolvedRooms(state).find(item => item.id === id); if (room) setSelectedUnit(room.unit); setSelectedRoom(id); }} onEnterRoom={enterRoom} onAnalyze={analyze} analyzing={analyzing}
         daily={daily} exposure={exposure} onShowSources={() => setSources(true)}
         onReferenceUpload={file => {
           if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 4_400_000) { setNotice('יש לבחור PNG, JPEG או WebP עד כ־4.4MB'); return; }
@@ -1134,6 +1295,10 @@ export default function App() {
           reader.readAsDataURL(file);
         }} />
     </section>
+    {combinedOpen && <CombinedPlans state={state} onClose={() => setCombinedOpen(false)} onView={presentDuplex}
+      unitScope={unitScope} onUnitScope={setUnitScope}
+      onSouthFamily={() => { setState(southFamilyProposal(state), 'חלופה דרומית'); setUnitScope('south'); }}
+      onSouthWest={() => { setState(southWestProposal(state), 'תוכנית מדרגות מערביות'); setUnitScope('south'); }} />}
     {editorOpen && <FloorEditor2D state={state} onChange={setState} onClose={() => { endHistory(); setEditorOpen(false); }}
       historyControls={historyControls} onBeginEdit={beginHistory} onEndEdit={endHistory} />}
     {historyOpen && <ActionHistory {...historyControls} entries={history.entries} index={history.index}

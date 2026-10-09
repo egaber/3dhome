@@ -69,12 +69,12 @@ for (const theme of ['light', 'dark']) test(`CAD annotation Fit and kitchen ${th
     const editor = await openEditor(page), before = await saved(page);
     await expand(editor); await fitBounds(page, editor);
     await page.screenshot({ path: info.outputPath(`overview-${size.width}-${theme}.png`), scale: 'css' });
-    await editor.getByLabel('בחירת אובייקט', { exact: true }).selectOption('room:a-wc');
-    const room = editor.locator('.cad-room-label[aria-label="חדר שירותי אורחים"]');
+    await editor.getByLabel('בחירת אובייקט', { exact: true }).selectOption('room:a-bath');
+    const room = editor.locator('.cad-room-label[aria-label="חדר חדר רחצה"]');
     await expect(room).toHaveAttribute('data-label-culled', 'true'); await expect(room.locator('text')).toHaveCount(0);
-    await expect(editor.locator('.cad-properties')).toContainText('שירותי אורחים');
-    await expect(editor.locator('[data-object-id="a-wc-toilet"]')).toHaveCount(1);
-    await expect(editor.locator('[data-object-id="a-wc-basin"]')).toHaveCount(1);
+    await expect(editor.locator('.cad-properties')).toContainText('חדר רחצה');
+    await expect(editor.locator('[data-object-id="a-bath-toilet"]')).toHaveCount(1);
+    await expect(editor.locator('[data-object-id="a-bath-basin"]')).toHaveCount(1);
     await editor.getByLabel('בחירת אובייקט', { exact: true }).selectOption('');
     const toggle = editor.getByRole('button', { name: 'מאפיינים, שכבות ומדרגות' });
     if (await toggle.isVisible()) await toggle.click();

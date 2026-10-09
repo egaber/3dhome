@@ -11,7 +11,9 @@ export interface PlanView { x: number; y: number; width: number; height: number 
 export const FURNITURE_NAMES: Record<FurnitureKind, string> = {
   bed: 'מיטה', sofa: 'ספה', 'coffee-table': 'שולחן סלון', 'dining-table': 'שולחן אוכל', chair: 'כיסא',
   'kitchen-unit': 'ארון מטבח', 'kitchen-island': 'אי מטבח', armchair: 'כורסה', sink: 'כיור מטבח',
-  cooktop: 'כיריים', fridge: 'מקרר', dishwasher: 'מדיח', toilet: 'אסלה', basin: 'כיור רחצה', shower: 'מקלחון',
+  cooktop: 'כיריים', fridge: 'מקרר', dishwasher: 'מדיח', toilet: 'אסלה', basin: 'כיור רחצה', shower: 'מקלחון', bathtub: 'אמבטיה', wardrobe: 'ארון בגדים',
+  desk: 'שולחן עבודה', nightstand: 'ארונית לילה', bookcase: 'ספרייה', 'oven-tower': 'תנור, מיקרוגל ומזווה',
+  'washer-dryer': 'מכונת כביסה ומייבש', 'tv-console': 'מזנון ומסך', pendant: 'גוף תאורה', vanity: 'ארון וכיור רחצה', bench: 'ספסל אחסון',
 };
 export const lengthText = (metres: number, units: DisplayUnit) => units === 'mm' ? `${(metres * 1000).toFixed(0)} מ״מ` : `${metres.toFixed(2)} מ׳`;
 export const pointsText = (points: Vec2[]) => points.map(p => p.join(',')).join(' ');

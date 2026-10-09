@@ -1,6 +1,6 @@
 /** Deterministic, world-metric walking. No camera, DOM, model or mesh ownership. */
 import { Box3, Ray, Triangle, Vector3 } from 'three';
-import type { FloorId, UnitId } from '../model/types';
+import type { LevelId, UnitId } from '../model/types';
 import type { WalkCollider } from './firstPersonNavigation';
 import type { WalkBounds } from './walkNavigation';
 
@@ -10,15 +10,15 @@ const MAX_RISE = 1 / 3 + WALK_SKIN;
 type Edge = readonly [Vector3, Vector3];
 export type WalkPortal = Readonly<{ to: string; edges: readonly Edge[] }>;
 export type WalkSupport = Readonly<{
-  id: string; unit?: UnitId; floor?: FloorId; stairId?: string; partIndex?: number;
-  kind: 'floor' | 'terrain' | 'well' | 'balcony' | 'tread' | 'landing' | 'entry-apron';
+  id: string; unit?: UnitId; floor?: LevelId; stairId?: string; partIndex?: number;
+  kind: 'floor' | 'terrain' | 'grate' | 'well' | 'balcony' | 'tread' | 'landing' | 'entry-apron';
   worldTopTriangles: readonly Triangle[]; boundary: readonly Edge[];
   portals: readonly WalkPortal[]; elevation: number; corridorBoundary?: readonly Edge[];
 }>;
 export type WalkPose = Readonly<{ eye: Vector3; mode: 'supported' | 'free'; supportId: string | null;
-  unit: UnitId; floor: FloorId; stairId: string | null }>;
+  unit: UnitId; floor: LevelId; stairId: string | null }>;
 export type PhysicalCollider = WalkCollider & Readonly<{ id: string }>;
-export type FloorLimit = Readonly<{ unit: UnitId; floor: FloorId; elevation: number; ceiling: number }>;
+export type FloorLimit = Readonly<{ unit: UnitId; floor: LevelId; elevation: number; ceiling: number }>;
 export type WalkWorld = Readonly<{
   revision: number; colliders: readonly PhysicalCollider[]; supports: readonly WalkSupport[];
   adjacency: Readonly<Record<string, readonly string[]>>; siteBounds: WalkBounds; floorLimits: readonly FloorLimit[];
@@ -60,13 +60,25 @@ function axis(eye: Vector3, height: number): Edge {
 }
 function contained(point: Vector3, collider: PhysicalCollider): boolean {
   if (!collider.bounds.containsPoint(point)) return false;
-  const ray = new Ray(point, new Vector3(.781, .371, .502).normalize()), hits: number[] = [];
+  const ray = new Ray(point, new Vector3(.781, .371, .502).normalize());
+  const hits: { distance: number; facing: number }[] = [];
   for (const t of collider.triangles) {
     const hit = ray.intersectTriangle(t.a, t.b, t.c, false, new Vector3());
-    if (hit) hits.push(hit.distanceTo(point));
+    if (hit) hits.push({ distance: hit.distanceTo(point), facing: Math.sign(t.getNormal(new Vector3()).dot(ray.direction)) });
   }
-  hits.sort((a, b) => a - b);
-  return hits.filter((d, i) => d > WALK_SKIN && (!i || d - hits[i - 1] > WALK_SKIN)).length % 2 === 1;
+  hits.sort((a, b) => a.distance - b.distance);
+  let crossings = 0;
+  for (let i = 0; i < hits.length;) {
+    const distance = hits[i].distance;
+    let entering = false, exiting = false;
+    while (i < hits.length && hits[i].distance - distance < WALK_SKIN) {
+      entering ||= hits[i].facing < 0; exiting ||= hits[i].facing > 0; i++;
+    }
+    // Adjacent wall panels have opposite coincident internal faces. Cancel that
+    // seam, while still counting duplicated triangles on one outer face once.
+    if (distance > WALK_SKIN && entering !== exiting) crossings++;
+  }
+  return crossings % 2 === 1;
 }
 
 /** An exact linear capsule sweep: the swept axis is a parallelogram, expanded

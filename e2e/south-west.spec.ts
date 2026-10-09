@@ -1,0 +1,57 @@
+import { expect, test } from '@playwright/test';
+
+test('attached south plan shows west straight stairs, a large kitchen and a persistent round table', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/?plans=combined&clawpilotTheme=light');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  const previousNorth = await page.evaluate(() => JSON.parse(localStorage.getItem('dori-solar-studio-v1')!).buildings.north);
+  await page.getByRole('dialog').getByRole('button', { name: 'תוכנית מצורפת', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'יחידה דרומית · קרקע וקומה ראשונה', exact: true });
+  await expect(dialog.getByRole('button', { name: 'תוכנית מצורפת', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(dialog.getByLabel('יחידות בתוכנית', { exact: true })).toHaveValue('south');
+  const ground = dialog.getByRole('region', { name: 'גיליון קומת קרקע', exact: true });
+  const table = ground.locator('[data-object-id="south-west-dining-table"]');
+  await expect(table.locator('ellipse')).toHaveCount(3);
+  await expect(ground.locator('[data-kind="kitchen-island"]')).toHaveCount(1);
+  await expect(ground.locator('[data-room-id="south-west-kitchen"]')).toHaveCount(1);
+  await expect(ground.locator('[data-object-id="b-dining-table"]')).toHaveCount(0);
+  await expect(dialog.locator('.combined-plan-notes')).toContainText('1.30');
+  await expect(dialog.locator('.combined-plan-notes')).toContainText('לא אומתו');
+  const tabletop = await table.locator('ellipse').last().boundingBox();
+  expect(tabletop).not.toBeNull();
+  expect(Math.abs(tabletop!.width - tabletop!.height)).toBeLessThan(1);
+  expect(await dialog.locator('button, select').evaluateAll(elements => elements.filter(element => {
+    const bounds = element.getBoundingClientRect(); return bounds.left < -1 || bounds.right > innerWidth + 1;
+  }).map(element => element.textContent))).toEqual([]);
+  await page.screenshot({ path: info.outputPath('south-west-screen.png'), fullPage: true });
+  await ground.getByRole('img', { name: 'תוכנית משולבת · קומת קרקע', exact: true }).screenshot({ path: info.outputPath('south-west-plan.png') });
+  await dialog.getByRole('button', { name: 'סגירת התוכנית המשולבת', exact: true }).click();
+  await page.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('dori-solar-studio-v1')!).buildings.south.southLayout ?? null)).toBeNull();
+  await page.getByRole('button', { name: 'ביצוע מחדש', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('dori-solar-studio-v1')!).buildings.south.southLayout)).toBe('west-stair');
+  await page.reload();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'קומת קרקע', exact: true }).click();
+  await expect(page.locator('[data-object-id="south-west-dining-table"] ellipse')).toHaveCount(3);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('dori-solar-studio-v1')!));
+  expect(saved.buildings.north).toEqual(previousNorth);
+  expect(saved.buildings.south).toMatchObject({ southLayout: 'west-stair', stairLayout: 'straight', stairPosition: [.68, 10.44] });
+  await page.getByRole('dialog').getByRole('combobox', { name: 'יחידות בתוכנית', exact: true }).selectOption('south');
+  await page.getByRole('region', { name: 'גיליון קומת קרקע', exact: true }).getByRole('button', { name: 'תלת־ממד לקומה', exact: true }).click();
+  await expect(page.locator('.asset-status')).toContainText('חומרי PBR וריהוט מוכנים');
+  await expect.poll(() => page.locator('.viewer canvas').evaluate(element => {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 32;
+    const context = canvas.getContext('2d')!; context.drawImage(element as HTMLCanvasElement, 0, 0, 32, 32);
+    const data = context.getImageData(0, 0, 32, 32).data, colors = new Set<string>();
+    for (let index = 0; index < data.length; index += 4) colors.add(`${data[index]},${data[index + 1]},${data[index + 2]}`);
+    return colors.size;
+  })).toBeGreaterThan(24);
+  await page.screenshot({ path: info.outputPath('south-west-3d.png'), fullPage: true });
+  const before = await page.evaluate(() => JSON.parse(localStorage.getItem('dori-solar-studio-session-v1')!).camera);
+  await page.locator('.viewer canvas').focus();
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('dori-solar-studio-session-v1')!).camera)).not.toEqual(before);
+  expect(errors).toEqual([]);
+});

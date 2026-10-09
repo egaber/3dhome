@@ -107,8 +107,8 @@
   .cad-top-controls > label { width: auto; }
   .cad-top-controls .history-controls { grid-column: 1 / -1; margin: 0; }
   .cad-top-controls .history-controls .button { flex: 1; }
-  .cad-workspace { grid-template-columns: minmax(0,1fr); grid-template-rows: minmax(210px,1fr) auto; }
-  .cad-tools { gap: 3px; padding: 3px 4px; flex-wrap: nowrap; }
+  .cad-workspace { grid-template-columns: minmax(0,1fr); grid-template-rows: minmax(360px,1fr) auto; }
+  .cad-tools { gap: 3px; padding: 3px 4px; flex-wrap: wrap; }
   .cad-tools .button { font-size: 12px; padding-inline: 6px; }
   .cad-side { border-inline-start: 0; border-top: 1px solid var(--cp-border); grid-template-rows: auto minmax(0,1fr); max-height: 36dvh; }
   .cad-editor .cad-details-toggle { display: flex; border-radius: 0; justify-content: center; }

@@ -14,35 +14,36 @@ function keyboardSelect(event: React.KeyboardEvent<SVGGElement>, select: () => v
   if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); select(); }
 }
 export function WallPlan({ wall, state, selection, hatchId, events, handleSize }: {
-  wall: PlanWall; state: SimulationState; selection: CadSelection | null; hatchId: string; events: ObjectEvents; handleSize: number;
+  wall: PlanWall; state: SimulationState; selection: CadSelection | null; hatchId: string; events?: ObjectEvents; handleSize: number;
 }) {
   const length = Math.hypot(wall.b[0] - wall.a[0], wall.b[1] - wall.a[1]);
   const apertures = getWallApertures(wall, state), openings = resolvedOpenings(state).filter(o => o.wallId === wall.id);
   const selected = selection?.type === 'wall' && selection.id === wall.id;
   const target: CadSelection = { type: 'wall', id: wall.id };
-  const select = () => events.select(target);
+  const select = () => events?.select(target);
   const map = (p: Vec2) => planPoint(wallLocalPoint(wall, p[0], p[1]), wall.unit, state);
   return <>
-    <g role="button" tabIndex={0} aria-label={`קיר ${wall.id}`} aria-pressed={selected} data-object-id={wall.id} onKeyDown={event => keyboardSelect(event, select)}>
+    <g role={events ? 'button' : undefined} tabIndex={events ? 0 : undefined} aria-label={events ? `קיר ${wall.id}` : undefined} aria-pressed={events ? selected : undefined} data-object-id={wall.id} onKeyDown={events ? event => keyboardSelect(event, select) : undefined}>
       {solidWallSpans(length, apertures).map(([a, b], i) => <polygon key={i} points={pointsText(wallPolygon(wall, a, b, state))}
         fill={`url(#${hatchId})`} className={`editor-wall cad-wall-polygon ${selected ? 'selected' : ''}`}
-        onPointerDown={event => events.begin(event, target)} />)}
+        onPointerDown={events ? event => events.begin(event, target) : undefined} />)}
       {/* Fully glazed hosts remain list selectable, without an invisible wall hit over the aperture. */}
       {selected && (['a', 'b'] as const).map(end => { const p = planPoint(wall[end], wall.unit, state); return <circle key={end}
-        className="cad-endpoint" cx={p[0]} cy={p[1]} r={handleSize} onPointerDown={event => events.begin(event, target, end)} />; })}
+        className="cad-endpoint" cx={p[0]} cy={p[1]} r={handleSize} onPointerDown={events ? event => events.begin(event, target, end) : undefined} />; })}
     </g>
     {apertures.map(aperture => {
       const opening = openings.find(o => o.id === aperture.id)!;
       const start = aperture.center - aperture.width / 2, end = aperture.center + aperture.width / 2, t = wall.thickness;
+      const swing = opening.swing === 'negative' ? -1 : 1;
       const next: CadSelection = { type: 'opening', id: aperture.id };
-      return <g key={aperture.id} role="button" tabIndex={0} aria-label={`${OPENING_NAMES[opening.kind]} ${opening.label}`} data-object-id={opening.id}
-        className={`cad-opening ${selection?.id === aperture.id ? 'selected' : ''}`} aria-pressed={selection?.id === aperture.id}
-        transform={svgMatrix(map)} onKeyDown={event => keyboardSelect(event, () => events.select(next))} onPointerDown={event => events.begin(event, next)}>
+      return <g key={aperture.id} role={events ? 'button' : undefined} tabIndex={events ? 0 : undefined} aria-label={events ? `${OPENING_NAMES[opening.kind]} ${opening.label}` : undefined} data-object-id={opening.id}
+        className={`cad-opening ${selection?.id === aperture.id ? 'selected' : ''}`} aria-pressed={events ? selection?.id === aperture.id : undefined}
+        transform={svgMatrix(map)} onKeyDown={events ? event => keyboardSelect(event, () => events.select(next)) : undefined} onPointerDown={events ? event => events.begin(event, next) : undefined}>
         <rect className="cad-opening-hit" x={start} y={-t / 2} width={aperture.width} height={t} />
         <path d={`M${start},${-t / 2} V${t / 2} M${end},${-t / 2} V${t / 2}`} />
         {opening.kind === 'door' ? <>
-          <path className="cad-door-swing" d={`M${end},0 A${aperture.width},${aperture.width} 0 0 0 ${start},${-aperture.width}`} />
-          <path d={`M${start},0 V${-aperture.width}`} />
+          <path className="cad-door-swing" d={`M${end},0 A${aperture.width},${aperture.width} 0 0 ${swing > 0 ? 1 : 0} ${start},${swing * aperture.width}`} />
+          <path d={`M${start},0 V${swing * aperture.width}`} />
         </> : opening.kind !== 'void' ? <>
           <rect x={start} y={-t * .32} width={aperture.width} height={t * .64} />
           <path d={`M${start},0 H${end} M${aperture.center},${-t * .32} V${t * .32}`} />
@@ -53,13 +54,13 @@ export function WallPlan({ wall, state, selection, hatchId, events, handleSize }
   </>;
 }
 export function FurniturePlan({ item, state, selection, events }: {
-  item: FurnitureSpec; state: SimulationState; selection: CadSelection | null; events: ObjectEvents;
+  item: FurnitureSpec; state: SimulationState; selection: CadSelection | null; events?: ObjectEvents;
 }) {
   const target: CadSelection = { type: 'furniture', id: item.id };
   return <g className={`cad-furniture ${selection?.id === item.id ? 'selected' : ''}`} data-object-id={item.id} data-kind={item.kind}
-    role="button" tabIndex={0} aria-label={`${FURNITURE_NAMES[item.kind]} ${item.id}`} aria-pressed={selection?.id === item.id}
+    role={events ? 'button' : undefined} tabIndex={events ? 0 : undefined} aria-label={events ? `${FURNITURE_NAMES[item.kind]} ${item.id}` : undefined} aria-pressed={events ? selection?.id === item.id : undefined}
     transform={svgMatrix(p => planPoint(furniturePoint(item, p), item.unit, state))}
-    onKeyDown={event => keyboardSelect(event, () => events.select(target))} onPointerDown={event => events.begin(event, target)}>
+    onKeyDown={events ? event => keyboardSelect(event, () => events.select(target)) : undefined} onPointerDown={events ? event => events.begin(event, target) : undefined}>
     <rect className="cad-furniture-hit" x={-item.width / 2} y={-item.depth / 2} width={item.width} height={item.depth} />
     {/* Line-only projection keeps table legs and independent overlaid appliances legible. */}
     {furnitureParts(item).map((part, i) => part.shape === 'cylinder'

@@ -31,7 +31,7 @@ async function beginTurn(page: Page, editor: Locator, degrees = 40) {
   await page.mouse.move(end.x, end.y, { steps: 5 });
 }
 
-for (const selection of ['furniture:a-living-sofa', 'wall:ground-wall-2-north', 'room:a-living', 'opening:added-north-east-glazing', 'stair:stair-north-ground']) {
+for (const selection of ['furniture:a-living-sofa', 'wall:ground-wall-2-north', 'room:a-living', 'opening:ground-wall-2-north-opening-0', 'stair:stair-north-ground']) {
   test(`rotation handle previews and commits one action for ${selection}`, async ({ page }, testInfo) => {
     const editor = await open(page, selection), before = await saved(page);
     const initialAngle = Number(await handle(editor).getAttribute('aria-valuenow'));

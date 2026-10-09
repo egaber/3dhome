@@ -38,6 +38,9 @@
 .stage:has(> .walk-controls) .model-chat { bottom: calc(100% + 4px); max-height: min(480px, calc(100cqh - 100% - 207px)); grid-template-rows: auto auto minmax(0, 1fr) auto; }
 .stage:has(> .walk-controls) .chat-context { max-height: 44px; overflow: auto; }
 .stage-surface { position: relative; min-height: 0; min-width: 0; overflow: hidden; }
+.stage-surface .view-modes { align-items: center; max-width: calc(100% - 28px); gap: 4px; }
+.stage-surface .view-modes .button { flex-shrink: 0; white-space: nowrap; font-size: 12px; padding-inline: 8px; min-height: 36px; }
+.stage-surface .view-modes select { width: 82px; min-width: 0; min-height: 36px; font-size: 12px; padding: 4px 6px; }
 .stage-status { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2px 8px; padding: 4px 8px; border-top: 1px solid var(--cp-border); background: var(--cp-surface); }
 .stage-status .stage-chat:not([hidden]) { display: contents; }
 .stage-status .chat-launcher { position: static; min-height: 44px; max-width: 112px; padding-inline: 6px; font-size: 11px; }

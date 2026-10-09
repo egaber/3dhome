@@ -1,0 +1,29 @@
+.plan-import-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 20px; }
+.plan-import-layout aside { display: grid; align-content: start; gap: 8px; }
+.plan-import-layout label { margin: 0; }
+.plan-file { border: 1px dashed var(--cp-border-strong); padding: 12px; border-radius: .625rem; background: var(--cp-surface); }
+.plan-file input { max-width: 100%; padding: 6px; font-size: 10px; }
+.plan-import-tools { display: flex; gap: 4px; flex-wrap: wrap; }
+.plan-import-tools button { flex: 1; font-size: 11px; padding-inline: 8px; }
+.plan-preview { border: 1px solid var(--cp-border); border-radius: 16px; overflow: hidden; background: var(--cp-surface); direction: ltr; min-height: 400px; display: flex; flex-direction: column; }
+.plan-preview > svg { flex: 1; width: 100%; min-height: 360px; max-height: 60dvh; touch-action: none; cursor: crosshair; }
+.plan-preview line { stroke: var(--cp-text); stroke-width: 2px; cursor: pointer; }
+.plan-preview line.selected { stroke: var(--cp-danger); stroke-width: 5px; }
+.plan-preview .calibration { stroke: var(--cp-accent); fill: var(--cp-accent); stroke-width: 2px; pointer-events: none; }
+.plan-preview > p { padding: 8px 12px; font-size: 11px; direction: rtl; }
+.plan-empty { margin: auto; text-align: center; padding: 32px; color: var(--cp-text-muted); }
+.plan-empty > svg { color: var(--cp-accent); }
+.plan-import-layout .plan-calibration { background: var(--cp-accent-soft); color: var(--cp-accent); padding: 8px 12px; border-radius: .625rem; margin: 0; font-size: 11px; }
+.plan-warning { border-inline-start: 3px solid var(--cp-warning); padding-inline-start: 12px; }
+.showroom-dialog .plan-error { color: var(--cp-danger); }
+.plan-import-submit { display: grid; grid-template-columns: minmax(160px, 1fr) 1.5fr auto; align-items: end; gap: 16px; padding-top: 16px; border-top: 1px solid var(--cp-border); }
+.plan-import-submit label { margin: 0; }
+.plan-import-submit .plan-approve { display: flex; align-items: center; font-size: 12px; line-height: 1.6; }
+.plan-approve input { width: 20px; min-height: 20px; flex: 0 0 20px; accent-color: var(--cp-accent); }
+@media (max-width: 760px) {
+  .plan-import-layout { grid-template-columns: 1fr; }
+  .plan-import-layout aside { grid-template-columns: 1fr 1fr; }
+  .plan-preview { grid-row: 1; min-height: 240px; }
+  .plan-preview > svg { min-height: 260px; max-height: 45dvh; }
+  .plan-import-submit { grid-template-columns: 1fr; }
+}

@@ -68,9 +68,10 @@ async function objectPoint(page: Page, id: string) {
   });
   await editor.getByRole('button', { name: 'סגירת עורך' }).click();
   const r = s.northBearing * Math.PI / 180;
-  const y = id.startsWith('stair') ? s.buildings.north.groundHeight / 18 : id.startsWith('added') ? 2.65 : s.buildings.north.groundHeight;
+  const opening = id.startsWith('added') || id.includes('-opening-');
+  const y = id.startsWith('stair') ? s.buildings.north.groundHeight / 18 : opening ? 2.5 : s.buildings.north.groundHeight;
   const world = new THREE.Vector3(plan[0] * Math.cos(r) - plan[1] * Math.sin(r), y, plan[0] * Math.sin(r) + plan[1] * Math.cos(r));
-  if (id.startsWith('added')) {
+  if (opening) {
     // A top ray correctly hits the lintel, not glass beneath it. Use a genuine
     // horizontal east-facade view for opening selection, and remove neighbor
     // obstruction through its ordinary persisted setting.
@@ -161,7 +162,7 @@ test('3D real transformed picks, miss and drag keep draft; measurement owns inpu
 
 for (const kind of ['furniture', 'wall', 'opening', 'stair'] as const) test(`3D ${kind} precise quick edit and persisted stair alternative`, async ({ page }, info) => {
   const before = await setup(page);
-  const id = kind === 'furniture' ? 'a-living-sofa' : kind === 'wall' ? 'ground-wall-2-north' : kind === 'opening' ? 'added-north-east-glazing' : 'stair-north-ground';
+  const id = kind === 'furniture' ? 'a-living-sofa' : kind === 'wall' ? 'ground-wall-2-north' : kind === 'opening' ? 'ground-wall-2-north-opening-0' : 'stair-north-ground';
   const point = await objectPoint(page, id); await page.mouse.dblclick(point.x, point.y);
   const q = quick(page); await expect(q).toBeVisible(); await expect(q.locator('.cad-object-id')).toHaveText(id);
   if (kind === 'furniture') {
@@ -200,12 +201,12 @@ test('hidden first-floor furniture is not selected or measured through isolation
 
 test('fresh import tombstones survive startup; save failure never claims success', async ({ page }) => {
   const s = await setup(page);
-  s.openings['added-north-east-glazing'] = { height: 0 };
+  s.openings['ground-wall-2-north-opening-0'] = { height: 0 };
   s.openings['ground-wall-0-north-opening-0'] = { width: 0 };
   await page.evaluate(keys => { for (const key of keys) localStorage.removeItem(key); }, [...MIGRATION_KEYS]);
   await page.locator('.topbar input[type="file"]').setInputFiles({ name: 'deleted.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(s)) });
   await expect(page.locator('.notice')).toContainText('יובאו ונשמרו בהצלחה');
-  await page.reload(); await expect.poll(async () => (await saved(page)).openings['added-north-east-glazing']?.height).toBe(0);
+  await page.reload(); await expect.poll(async () => (await saved(page)).openings['ground-wall-2-north-opening-0']?.height).toBe(0);
   await expect.poll(async () => (await saved(page)).openings['ground-wall-0-north-opening-0']?.width).toBe(0);
   const before = await saved(page);
   await page.evaluate(key => { const original = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (k === key) throw new DOMException('Quota', 'QuotaExceededError'); original.call(this, k, v); }; }, KEY);

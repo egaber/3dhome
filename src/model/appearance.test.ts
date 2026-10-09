@@ -11,7 +11,7 @@ import { buildArchitecture, disposeArchitecture, type Palette } from '../scene/a
 import { createRealisticAssets, normalizeModel } from '../scene/realisticAssets';
 import { retainResource } from '../scene/resources';
 import { EXTRA_MODELS } from './modelCatalog';
-import { neededResources, RESOURCE_HASHES, importResources, verifyResource } from '../lib/assetCache';
+import { BASE_RESOURCE_PATHS, neededResources, RESOURCE_HASHES, importResources, verifyResource } from '../lib/assetCache';
 import { sceneSelection } from '../lib/viewerMeasurement';
 
 const palette: Palette = { background: '#f7f4ef', surface: '#ffffff', soft: '#f5f5f5', border: '#dedede', text: '#242424', muted: '#5c5c5c', accent: '#b11f4b', success: '#16a34a', warning: '#f59e0b', link: '#0078d4', wall: '#f4f1e8' };
@@ -134,8 +134,8 @@ describe('catalogue and portable bundle integrity', () => {
     }
   });
   it('exports base assets and only selected additional models with all glTF dependencies', () => {
-    const s = base(); expect(neededResources(s)).toHaveLength(17);
-    s.appearance.models.example = 'modern_arm_chair_01'; expect(neededResources(s)).toHaveLength(25);
+    const s = base(); expect(neededResources(s)).toHaveLength(BASE_RESOURCE_PATHS.length);
+    s.appearance.models.example = 'modern_arm_chair_01'; expect(neededResources(s)).toHaveLength(BASE_RESOURCE_PATHS.length + 8);
   });
   it('rejects arbitrary paths and poisoned bundled model bytes before storage', async () => {
     await expect(importResources({ version: 1, files: { '../outside': 'data:application/octet-stream;base64,AAAA' } })).rejects.toThrow();

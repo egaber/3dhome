@@ -50,7 +50,7 @@ describe('real PBR materials', () => {
     for (const [file, hash] of Object.entries(credits.files)) {
       expect(createHash('sha256').update(readFileSync(`public/assets/realism/${file}`)).digest('hex')).toBe(hash);
     }
-    for (const asset of SURFACE_ASSETS) for (const map of ['color', 'normal', 'roughness'] as const) {
+    for (const asset of SURFACE_ASSETS) for (const map of asset.channels) {
       expect(surfaceUrl(asset.id, map)).not.toMatch(/^https?:/);
       expect(credits.files).toHaveProperty(`${asset.id}-${map}.jpg`);
     }
@@ -87,11 +87,11 @@ describe('asset lifetimes and fitting', () => {
     const pool = createRealisticAssets(16);
     expect(tl).not.toHaveBeenCalled(); expect(gl).not.toHaveBeenCalled();
     const promise = pool.load(); expect(pool.load()).toBe(promise); expect(await promise).toEqual([]);
-    expect(tl).toHaveBeenCalledTimes(15); expect(gl).toHaveBeenCalledTimes(2);
+    expect(tl).toHaveBeenCalledTimes(SURFACE_ASSETS.reduce((total, asset) => total + asset.channels.length, 0)); expect(gl).toHaveBeenCalledTimes(2);
     const source = pool.models.get('SheenChair')!.children[0].children[0];
     expect(source.rotation.y).toBeCloseTo(Math.PI);
     const maps = pool.surfaces.get('wood_floor')!;
-    expect(maps.color.colorSpace).toBe(THREE.SRGBColorSpace); expect(maps.normal.colorSpace).toBe(THREE.NoColorSpace);
+    expect(maps.color.colorSpace).toBe(THREE.SRGBColorSpace); expect(maps.normal?.colorSpace).toBe(THREE.NoColorSpace);
     expect(maps.roughness.colorSpace).toBe(THREE.NoColorSpace); expect(maps.color.anisotropy).toBe(8); expect(maps.color.wrapS).toBe(THREE.RepeatWrapping);
     const spies = textures.map(t => vi.spyOn(t, 'dispose'));
     pool.dispose(); pool.dispose(); spies.forEach(s => expect(s).toHaveBeenCalledTimes(1));
@@ -106,7 +106,7 @@ describe('asset lifetimes and fitting', () => {
     const pool = createRealisticAssets(1), pending = pool.load();
     await Promise.resolve(); // The persistent cache URL resolves before the image loader starts.
     pool.dispose(); complete(late);
-    expect(await pending).toHaveLength(7); expect(disposed).toHaveBeenCalledTimes(1);
+    expect(await pending).toHaveLength(SURFACE_ASSETS.length + MODEL_ASSETS.length); expect(disposed).toHaveBeenCalledTimes(1);
     expect(pool.models.size).toBe(0); expect(pool.surfaces.size).toBe(0);
   });
   it('disposes late GLB geometry, physical textures and materials', async () => {

@@ -6,7 +6,7 @@ import './materialLibrary.css';
 import { EXTRA_MODELS, type CatalogModel } from '../model/modelCatalog';
 import { emptyAppearance, surfaceTarget } from '../model/appearance';
 import { FLOOR_NAMES, UNIT_NAMES, type FloorId, type SimulationState, type UnitId } from '../model/types';
-import { resolvedFurniture, resolvedOpenings, resolvedWalls, FOOTPRINTS } from '../model/plans';
+import { resolvedFurniture, resolvedOpenings, resolvedWalls, resolvedFootprint } from '../model/plans';
 import { applyCadCommand } from '../model/cad';
 import { serializeProject } from '../lib/project';
 import { FURNITURE_NAMES } from '../lib/cadEditor';
@@ -27,7 +27,7 @@ export function MaterialLibrary({ onClose, onEnable, state, onChange, selectedUn
   const add = (model: CatalogModel) => {
     if (!state || !onChange) return;
     try {
-      const ring = FOOTPRINTS[floor][unit], center: [number, number] = [ring.reduce((s, p) => s + p[0], 0) / ring.length, ring.reduce((s, p) => s + p[1], 0) / ring.length];
+      const ring = resolvedFootprint(floor, unit, state), center: [number, number] = [ring.reduce((s, p) => s + p[0], 0) / ring.length, ring.reduce((s, p) => s + p[1], 0) / ring.length];
       const id = `catalog-${crypto.randomUUID()}`, [width, depth, height] = model.dimensions;
       const next = applyCadCommand(state, { type: 'add-furniture', item: { id, kind: model.kind, unit, floor, center, width, depth, height, rotation: 0, source: 'added' } });
       next.appearance = { ...(state.appearance ?? emptyAppearance()), models: { ...state.appearance?.models, [id]: model.id } };

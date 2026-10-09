@@ -1,0 +1,117 @@
+.combined-plans { width: calc(100% - 24px); max-width: 1600px; height: calc(100dvh - 24px); max-height: none; margin: auto; padding: 0; border: 1px solid var(--cp-border); border-radius: 8px; background: var(--cp-surface); color: var(--cp-text); overflow: hidden; letter-spacing: 0; }
+.combined-plans[open] { display: grid; grid-template-rows: auto auto minmax(0, 1fr); }
+.combined-plans::backdrop { background: var(--cp-overlay); }
+.combined-plans :focus-visible { outline: 2px solid var(--cp-accent); outline-offset: -2px; }
+.combined-plans .button { min-height: 44px; border-radius: 6px; }
+.combined-plans .button.icon { width: 44px; flex-shrink: 0; }
+.combined-plan-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--cp-border); background: var(--cp-bg-elevated); }
+.combined-plan-heading { display: flex; align-items: center; gap: 12px; }
+.combined-plan-heading > svg { color: var(--cp-accent); flex-shrink: 0; }
+.combined-plan-heading h2 { margin: 0; font-size: 20px; line-height: 1.4; }
+.combined-plan-heading p { margin: 4px 0 0; font-size: 12px; color: var(--cp-text-muted); }
+.combined-plan-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.combined-plan-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; padding: 8px 24px; border-bottom: 1px solid var(--cp-border); }
+.combined-unit-select { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.combined-unit-select select { width: 150px; min-height: 44px; }
+.combined-plan-tabs, .combined-plan-layers, .combined-plan-zoom { display: flex; align-items: center; gap: 4px; }
+.combined-plan-tabs { flex-wrap: wrap; }
+.combined-plan-tabs .button { padding-inline: 12px; font-size: 13px; }
+.combined-plan-layers { flex-wrap: wrap; gap: 12px; }
+.combined-plan-layers label { display: flex; align-items: center; gap: 6px; min-height: 44px; font-size: 12px; }
+.combined-plan-layers input { width: 17px; height: 17px; margin: 0; accent-color: var(--cp-accent); }
+.combined-plan-zoom { margin-inline-start: auto; direction: ltr; }
+.combined-plan-zoom output { min-width: 48px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }
+.combined-plan-scroll { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.combined-plan-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; padding: 24px; }
+.combined-plan-grid.single-floor { grid-template-columns: minmax(0, 860px); justify-content: center; }
+.combined-floor { min-width: 0; }
+.combined-floor-title { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; border-bottom: 2px solid var(--cp-text); padding-bottom: 8px; }
+.combined-floor-title h3 { margin: 0; font-size: 17px; }
+.combined-floor-title h3 span { color: var(--cp-text-soft); font-size: 12px; font-variant-numeric: tabular-nums; margin-inline-end: 8px; }
+.combined-floor-title .button { font-size: 12px; }
+.combined-unit-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; padding-block: 12px; }
+.combined-unit-legend > span, .combined-room-schedules h4 { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.combined-unit-legend bdi { color: var(--cp-text-muted); font-variant-numeric: tabular-nums; }
+.plan-unit-north { --plan-unit-color: var(--cp-accent); --plan-unit-fill: var(--cp-accent-soft); }
+.plan-unit-south { --plan-unit-color: var(--cp-link); --plan-unit-fill: var(--cp-surface-soft); }
+.combined-unit-legend i, .combined-room-schedules h4 i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--plan-unit-color); }
+.combined-drawing-scroll { max-width: 100%; overflow: auto; direction: ltr; border-bottom: 1px solid var(--cp-border); }
+.combined-plan-drawing { display: block; width: 100%; height: auto; direction: ltr; }
+.combined-plan-drawing .plan-paper { fill: var(--cp-surface); }
+.combined-plan-drawing .plan-wall-fill { fill: var(--cp-text); }
+.combined-plan-drawing .combined-footprint { fill: var(--plan-unit-fill); stroke: var(--plan-unit-color); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.combined-plan-drawing text { fill: var(--cp-text); font-family: "Segoe UI", Aptos, Calibri, sans-serif; font-size: .38px; dominant-baseline: middle; letter-spacing: 0; }
+.combined-plan-drawing .plan-svg-title { font-size: .52px; font-weight: 600; }
+.combined-plan-drawing .plan-svg-subtitle, .combined-plan-drawing .plan-svg-note { font-size: .34px; fill: var(--cp-text-muted); }
+.combined-plan-drawing .cad-wall-polygon { stroke: var(--cp-text); stroke-width: .6; stroke-linejoin: miter; vector-effect: non-scaling-stroke; cursor: default; }
+.combined-plan-drawing .cad-opening { fill: none; stroke: var(--cp-link); }
+.combined-plan-drawing .cad-opening > *, .combined-plan-drawing .cad-furniture > * { stroke-width: .8; vector-effect: non-scaling-stroke; }
+.combined-plan-drawing .cad-opening-hit { fill: var(--cp-surface); stroke: none; }
+.combined-plan-drawing .cad-door-swing { stroke-dasharray: 3 2; }
+.combined-plan-drawing .cad-furniture { fill: none; stroke: var(--cp-border-strong); }
+.combined-plan-drawing .cad-furniture-hit { fill: none; stroke: none; }
+.combined-plan-drawing .plan-room-index circle { fill: var(--cp-surface); stroke: var(--plan-unit-color); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.combined-plan-drawing .plan-room-index text { font-size: .52px; font-weight: 600; text-anchor: middle; fill: var(--plan-unit-color); }
+.combined-plan-drawing .plan-room-index .plan-room-name { font-size: .30px; font-weight: 500; fill: var(--cp-text); stroke: var(--cp-surface); stroke-width: .12px; paint-order: stroke fill; }
+.combined-plan-drawing .cad-dimension path { fill: none; stroke: var(--cp-text-muted); stroke-width: .75; vector-effect: non-scaling-stroke; }
+.combined-plan-drawing .cad-dimension text { text-anchor: middle; fill: var(--cp-text-muted); paint-order: stroke fill; stroke: var(--cp-surface); stroke-width: .13px; }
+.combined-plan-drawing .plan-north path { fill: none; stroke: var(--cp-text); stroke-width: .045px; }
+.combined-plan-drawing .plan-north text, .combined-plan-drawing .plan-scale text { text-anchor: middle; }
+.combined-plan-drawing .plan-scale rect { stroke: var(--cp-text); stroke-width: .02px; }
+.combined-plan-drawing .plan-scale-dark { fill: var(--cp-text); }
+.combined-plan-drawing .plan-scale-light { fill: var(--cp-surface); }
+.combined-room-schedules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; padding-block: 16px; }
+.combined-room-schedules h4 { margin: 0 0 8px; }
+.combined-room-schedules table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.combined-room-schedules caption { text-align: start; color: var(--cp-text-muted); padding-bottom: 8px; font-size: 11px; }
+.combined-room-schedules th, .combined-room-schedules td { padding: 8px 4px; border-bottom: 1px solid var(--cp-border); text-align: start; overflow-wrap: anywhere; }
+.combined-room-schedules thead th { font-size: 11px; font-weight: 400; color: var(--cp-text-muted); }
+.combined-room-schedules tbody th { font-weight: 400; }
+.combined-room-schedules td:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.combined-room-schedules td:first-child { color: var(--plan-unit-color); font-weight: 600; }
+.combined-room-schedules p { font-size: 12px; margin: 12px 0 0; }
+.combined-plan-notes { padding: 20px 24px; border-top: 1px solid var(--cp-border); background: var(--cp-surface-soft); font-size: 12px; line-height: 1.8; }
+.combined-plan-notes p { margin: 6px 0 0; color: var(--cp-text-muted); }
+.combined-empty { padding: 48px 16px; color: var(--cp-text-muted); text-align: center; }
+.duplex-presentation-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.duplex-presentation-controls .button { min-height: 36px; font-size: 12px; }
+.duplex-presentation-controls select { width: 140px; font-size: 12px; }
+@media (max-width: 1000px) {
+  .combined-room-schedules { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 700px) {
+  .combined-plans { width: 100%; height: 100dvh; border: 0; border-radius: 0; }
+  .combined-plan-header { padding: 12px; gap: 8px; }
+  .combined-plan-heading h2 { font-size: 17px; }
+  .combined-plan-heading > svg { width: 18px; }
+  .combined-plan-actions { width: 100%; gap: 4px; }
+  .combined-plan-actions > .button:first-child { margin-inline-end: auto; font-size: 12px; padding-inline: 8px; }
+  .combined-plan-tools { padding: 4px 12px; gap: 0 8px; }
+  .combined-plan-tabs { width: 100%; }
+  .combined-plan-tabs .button { flex: 1; padding-inline: 6px; }
+  .combined-plan-layers { gap: 8px; }
+  .combined-plan-layers label { font-size: 11px; gap: 4px; }
+  .combined-plan-zoom { gap: 0; }
+  .combined-plan-zoom .button.icon { width: 36px; }
+  .combined-plan-zoom output { min-width: 38px; }
+  .combined-plan-grid { grid-template-columns: minmax(0, 1fr); padding: 16px 12px; gap: 24px; }
+  .combined-floor-title h3 { font-size: 15px; }
+  .combined-unit-legend { font-size: 11px; }
+  .combined-plan-notes { padding: 16px 12px; }
+}
+@media print {
+  @page { size: A3 landscape; margin: 10mm; }
+  html:has(.combined-plans[open]), body:has(.combined-plans[open]), body:has(.combined-plans[open]) #root { height: auto; overflow: visible; }
+  .app-shell:has(.combined-plans[open]) { display: block; height: auto; }
+  .app-shell:has(.combined-plans[open]) > :not(.combined-plans) { display: none !important; }
+  .combined-plans[open] { position: static; display: block; width: 100%; height: auto; max-height: none; border: 0; overflow: visible; }
+  .combined-plans::backdrop { display: none; }
+  .combined-plan-actions, .combined-plan-tools, .combined-floor-title .button { display: none; }
+  .combined-plan-scroll, .combined-drawing-scroll { overflow: visible; }
+  .combined-drawing-scroll > div { width: 100% !important; }
+  .combined-plan-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12mm; padding: 6mm 0; }
+  .combined-floor-title, .combined-unit-legend, .combined-plan-drawing, .combined-room-schedules section { break-inside: avoid; }
+  .combined-room-schedules { grid-template-columns: minmax(0, 1fr); }
+  .combined-plan-drawing { max-height: 205mm; }
+  .combined-plans { print-color-adjust: exact; }
+}

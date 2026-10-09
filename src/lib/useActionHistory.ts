@@ -10,13 +10,14 @@ export function useActionHistory(initializer: () => SimulationState) {
   const undo = useCallback(() => dispatch({ type: 'undo' }), []);
   const redo = useCallback(() => dispatch({ type: 'redo' }), []);
   const jump = useCallback((id: number) => dispatch({ type: 'jump', id }), []);
+  const reset = useCallback((state: SimulationState) => dispatch({ type: 'reset', state }), []);
   // Preview the pending gesture as one step, without dropping redo on a net no-op.
   const visible = useMemo(() => finishHistory(history), [history]);
   useEffect(() => {
     window.addEventListener('blur', end);
     return () => window.removeEventListener('blur', end);
   }, [end]);
-  return { state: history.present, change, begin, end, undo, redo, jump,
+  return { state: history.present, change, begin, end, undo, redo, jump, reset,
     entries: visible.entries, index: visible.index,
     canUndo: visible.index > 0, canRedo: visible.index < visible.entries.length - 1 };
 }

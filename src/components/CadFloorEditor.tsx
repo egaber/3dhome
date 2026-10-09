@@ -3,9 +3,9 @@ import { Grid2X2, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { HistoryControls, type HistoryControlsProps } from './ActionHistory';
 import { isEditableTarget } from '../lib/walkNavigation';
-import { FOOTPRINTS, isFloorAvailable, planPoint, resolvedFurniture, resolvedRooms, resolvedWalls } from '../model/plans';
-import { applyCadCommand, getWallApertures, resolveStairGeometry, type CadCommand } from '../model/cad';
-import { FLOOR_NAMES, UNIT_NAMES, type FloorId, type SimulationState, type UnitId, type Vec2 } from '../model/types';
+import { isFloorAvailable, planPoint, resolvedFootprint, resolvedFurniture, resolvedRooms, resolvedWalls } from '../model/plans';
+import { applyCadCommand, inversePlanPoint, getWallApertures, resolveStairGeometry, type CadCommand } from '../model/cad';
+import { FLOOR_NAMES, LEVEL_NAMES, UNIT_NAMES, type FloorId, type SimulationState, type UnitId, type Vec2 } from '../model/types';
 import { boundsOf, dragCommand, finishCadDrag, furniturePoint, geometryContext, lengthText, planMeasurement, pointsText, snapPlan, zoomPlan,
   FURNITURE_NAMES, type CadSelection, type DisplayUnit, type PlanView } from '../lib/cadEditor';
 import { dimensionGutters, fitAnnotatedPlan, roomLabelFits } from '../lib/cadLayout';
@@ -18,9 +18,11 @@ import { rotationCommand, rotationInfo, rotationShortcut } from '../lib/cadRotat
 import { normalizeRotation, rotatePlanPoint } from '../model/rotation';
 import { rotationDragCommand } from '../lib/cadTransformHandles';
 import { CadTransformHandles } from './CadTransformHandles';
+import { copyPlanObject, pastePlanObject, type PlanClipboard } from '../lib/planClipboard';
+import { OCTOBER_SOURCE } from '../model/octoberGroundPlan';
 import './floorEditor.css';
 
-type Tool = 'select' | 'pan' | 'measure';
+type Tool = 'select' | 'pan' | 'measure' | 'wall';
 type Layers = { grid: boolean; walls: boolean; furniture: boolean; labels: boolean; dimensions: boolean };
 type Drag = { base: SimulationState; selection: CadSelection; kind: 'move' | 'rotate'; start: Vec2; pointer: number; screen: Vec2; endpoint?: 'a' | 'b'; command: CadCommand | null };
 const FLOORS: FloorId[] = ['basement', 'ground', 'first'];
@@ -35,8 +37,10 @@ export interface FloorEditor2DProps {
 export function CadFloorEditor({ state, onChange, onClose, historyControls }: FloorEditor2DProps) {
   const [floor, setFloor] = useState<FloorId>(state.view.planFloor), [unit, setUnit] = useState<UnitId>(state.buildings.north.enabled ? 'north' : 'south');
   const [selection, setSelection] = useState<CadSelection | null>(null), [snap, setSnap] = useState(true), [units, setUnits] = useState<DisplayUnit>('m');
+  const [clipboard, setClipboard] = useState<PlanClipboard | null>(null), [wallStart, setWallStart] = useState<Vec2 | null>(null);
+  const [underlay, setUnderlay] = useState(true);
   const [tool, setTool] = useState<Tool>('select'), [layers, setLayers] = useState<Layers>({ grid: true, walls: true, furniture: true, labels: true, dimensions: true });
-  const [connection, setConnection] = useState<'basement' | 'ground'>(floor === 'basement' ? 'basement' : 'ground');
+  const [connection, setConnection] = useState<FloorId>(floor === 'basement' ? 'basement' : 'ground');
   const [details, setDetails] = useState(false), [error, setError] = useState('');
   const [preview, setPreview] = useState<{ base: SimulationState; next: SimulationState } | null>(null);
   const [measurement, setMeasurement] = useState<{ context: string; points: Vec2[] }>({ context: '', points: [] });
@@ -53,8 +57,8 @@ export function CadFloorEditor({ state, onChange, onClose, historyControls }: Fl
   const points = measurement.context === context ? measurement.points : [];
   const setPoints = (next: Vec2[]) => setMeasurement({ context, points: next });
   const result = planMeasurement(points, floor, unit, state), stair = available ? resolveStairGeometry(shown, unit, connection) : null;
-  const footprint = available ? FOOTPRINTS[floor][unit].map(p => planPoint(p, unit, shown)) : [];
-  const localBounds = boundsOf(FOOTPRINTS[floor][unit]);
+  const footprint = available ? resolvedFootprint(floor, unit, shown).map(p => planPoint(p, unit, shown)) : [];
+  const localBounds = boundsOf(resolvedFootprint(floor, unit, shown));
   const overall = ([[localBounds.x, localBounds.y + localBounds.height], [localBounds.x + localBounds.width, localBounds.y + localBounds.height],
     [localBounds.x + localBounds.width, localBounds.y]] as Vec2[]).map(p => planPoint(p, unit, shown));
   const furnitureFootprints = furniture.map(item => ([[-item.width / 2, -item.depth / 2], [item.width / 2, -item.depth / 2], [item.width / 2, item.depth / 2], [-item.width / 2, item.depth / 2]] as Vec2[]).map(p => planPoint(furniturePoint(item, p), unit, shown)));
@@ -65,6 +69,7 @@ export function CadFloorEditor({ state, onChange, onClose, historyControls }: Fl
   const unitPerPixel = view.width / Math.max(1, size.width), textSize = 12 * unitPerPixel;
   const patternId = useId().replace(/:/g, ''), gridId = `${patternId}-grid`, hatchId = `${patternId}-hatch`;
   const cancel = useCallback(() => { dragRef.current = null; panRef.current = null; setPreview(null); }, []);
+  useEffect(() => { setWallStart(null); }, [unit, floor, tool, state]);
   const close = () => { cancel(); onClose(); };
   const fitMargin = selection?.type === 'wall' || selection?.type === 'opening' ? 88 : dimensionGutters(overall);
   const fit = () => { cancel(); setView(fitAnnotatedPlan(bounds, size.width, size.height, fitMargin)); };
@@ -199,16 +204,33 @@ export function CadFloorEditor({ state, onChange, onClose, historyControls }: Fl
       ...getWallApertures(w, shown).map(o => ({ selection: { type: 'opening' as const, id: o.id }, label: `פתח ${o.id}` }))]) : []),
     ...(layers.furniture ? furniture.map(i => ({ selection: { type: 'furniture' as const, id: i.id }, label: `${FURNITURE_NAMES[i.kind]} ${i.id}` })) : []),
     ...(layers.labels ? rooms.map(r => ({ selection: { type: 'room' as const, id: r.id }, label: `חדר ${r.name}` })) : []),
-    ...(stair ? [{ selection: { type: 'stair' as const, id: `stair-${unit}-${connection}` }, label: `מדרגות ${FLOOR_NAMES[connection]} אל ${FLOOR_NAMES[stair.toFloor]}` }] : []),
+    ...(stair ? [{ selection: { type: 'stair' as const, id: `stair-${unit}-${connection}` }, label: `מדרגות ${FLOOR_NAMES[connection]} אל ${LEVEL_NAMES[stair.toFloor]}` }] : []),
   ];
   const activeSelection = selection && visibleObjects.some(o => o.selection.type === selection.type && o.selection.id === selection.id) ? selection : null;
   const selectedWall = activeSelection?.type === 'wall' ? walls.find(w => w.id === activeSelection.id)
     : activeSelection?.type === 'opening' ? walls.find(w => getWallApertures(w, shown).some(o => o.id === activeSelection.id)) : undefined;
   const wrappedHistory: HistoryControlsProps = { ...historyControls,
     onUndo: () => { cancel(); historyControls.onUndo(); }, onRedo: () => { cancel(); historyControls.onRedo(); }, onShowHistory: () => { cancel(); historyControls.onShowHistory(); } };
+  const copy = () => safely(() => { if (activeSelection) setClipboard(copyPlanObject(state, activeSelection)); });
+  const paste = () => safely(() => {
+    if (!clipboard || !available) return;
+    const result = pastePlanObject(state, clipboard, `copy-${crypto.randomUUID()}`, unit, floor);
+    cancel(); onChange(result.state, 'הדבקת אובייקט בתוכנית'); select(result.selection);
+  });
+  const imported = shown.design.importedPlan?.unit === unit && floor === 'ground' ? shown.design.importedPlan : null;
+  const october = shown.design.groundPlan === 'october-2026' && floor === 'ground' && !imported;
+  const sourcePoint = (x: number, y: number): Vec2 => planPoint([(x - OCTOBER_SOURCE.origin[0]) / OCTOBER_SOURCE.pointsPerMetre, (y - OCTOBER_SOURCE.origin[1]) / OCTOBER_SOURCE.pointsPerMetre], unit, shown);
+  const sourceOrigin = sourcePoint(OCTOBER_SOURCE.crop[0], OCTOBER_SOURCE.crop[1]);
+  const sourceX = sourcePoint(OCTOBER_SOURCE.crop[2], OCTOBER_SOURCE.crop[1]), sourceY = sourcePoint(OCTOBER_SOURCE.crop[0], OCTOBER_SOURCE.crop[3]);
+  const imageOrigin = planPoint([0, 0], unit, shown), imageX = imported && planPoint([imported.imageWidth, 0], unit, shown), imageZ = imported && planPoint([0, imported.imageDepth], unit, shown);
   return <div ref={backdropRef} className="editor-backdrop cad-modal-backdrop"><section ref={dialogRef} tabIndex={-1} className="floor-editor cad-editor" role="dialog" aria-modal="true" aria-label="עורך תוכנית דו־ממדית" dir="rtl"
     onKeyDown={event => {
-      if (event.defaultPrevented || event.isPropagationStopped() || event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey || isEditableTarget(event.target)) return;
+      if (event.defaultPrevented || event.isPropagationStopped() || event.nativeEvent.isComposing || event.altKey || isEditableTarget(event.target)) return;
+      if (event.ctrlKey || event.metaKey) {
+        if (event.key.toLowerCase() === 'c' && activeSelection) { event.preventDefault(); copy(); }
+        if (event.key.toLowerCase() === 'v' && clipboard) { event.preventDefault(); paste(); }
+        return;
+      }
       const turn = rotationShortcut(event.nativeEvent, isEditableTarget(event.target));
       if (turn !== null && activeSelection && tool === 'select' && svgRef.current?.contains(event.target as Node)) {
         event.preventDefault();
@@ -232,7 +254,9 @@ export function CadFloorEditor({ state, onChange, onClose, historyControls }: Fl
     </div>
     <div className="cad-workspace"><div className="cad-drawing-area">
       <div className="cad-tools" role="toolbar" aria-label="כלי תוכנית">
-        {([['select', 'בחירה'], ['pan', 'הזזת מבט'], ['measure', 'מדידה']] as const).map(([id, label]) => <Button key={id} size="sm" variant={tool === id ? 'primary' : 'secondary'} aria-pressed={tool === id} onClick={() => { cancel(); setTool(id); if (id === 'measure') setDetails(true); }}>{label}</Button>)}
+        {([['select', 'בחירה'], ['pan', 'הזזת מבט'], ['measure', 'מדידה'], ['wall', 'שרטוט קיר']] as const).map(([id, label]) => <Button key={id} size="sm" variant={tool === id ? 'primary' : 'secondary'} aria-pressed={tool === id} onClick={() => { cancel(); setTool(id); if (id === 'measure') setDetails(true); }}>{label}</Button>)}
+        <Button size="sm" variant="secondary" disabled={!activeSelection || !['wall', 'furniture'].includes(activeSelection.type)} onClick={copy}>העתקה</Button>
+        <Button size="sm" variant="secondary" disabled={!clipboard || !available} onClick={paste}>הדבקה</Button>
         <Button size="sm" variant="secondary" onClick={fit}>התאמה</Button>
         <Button size="sm" variant="secondary" aria-label="התקרבות בתוכנית" onClick={() => cameraZoom(.75)}>+</Button>
         <Button size="sm" variant="secondary" aria-label="התרחקות בתוכנית" onClick={() => cameraZoom(1 / .75)}>−</Button>
@@ -252,6 +276,17 @@ export function CadFloorEditor({ state, onChange, onClose, historyControls }: Fl
             if (event.button !== 0 || dragRef.current) return;
             event.preventDefault(); svgRef.current?.focus(); cancel();
             if (tool === 'measure' && available) { const p = snapPlan(eventPoint(event), snap); setPoints(points.length === 1 ? [points[0], p] : [p]); }
+            else if (tool === 'wall' && available) {
+              const p = snapPlan(eventPoint(event), snap);
+              if (!wallStart) setWallStart(p);
+              else safely(() => {
+                const id = `wall-${crypto.randomUUID()}`;
+                const end: Vec2 = event.shiftKey ? Math.abs(p[0] - wallStart[0]) > Math.abs(p[1] - wallStart[1]) ? [p[0], wallStart[1]] : [wallStart[0], p[1]] : p;
+                command({ type: 'add-wall', item: { id, sourceId: 'custom', unit, floor, a: inversePlanPoint(wallStart, unit, state), b: inversePlanPoint(end, unit, state),
+                  thickness: .18, exterior: false, retaining: false, openings: [] } }, 'שרטוט קיר חדש');
+                setWallStart(null); setSelection({ type: 'wall', id });
+              });
+            }
             else if (tool === 'pan') { capture(event); panRef.current = { screen: [event.clientX, event.clientY], view, pointer: event.pointerId }; }
             else setSelection(null);
           }}>
@@ -259,6 +294,11 @@ export function CadFloorEditor({ state, onChange, onClose, historyControls }: Fl
             <pattern id={hatchId} width=".12" height=".12" patternUnits="userSpaceOnUse"><rect width=".12" height=".12" /><path d="M0 .12 L.12 0" /></pattern></defs>
           {layers.grid && <rect x={view.x} y={view.y} width={view.width} height={view.height} fill={`url(#${gridId})`} pointerEvents="none" />}
           {available && <polygon className="cad-footprint" points={pointsText(footprint)} />}
+          {underlay && imported?.image && imageX && imageZ && <image href={imported.image} width="1" height="1" opacity=".32" pointerEvents="none"
+            transform={`matrix(${imageX[0] - imageOrigin[0]},${imageX[1] - imageOrigin[1]},${imageZ[0] - imageOrigin[0]},${imageZ[1] - imageOrigin[1]},${imageOrigin[0]},${imageOrigin[1]})`} />}
+          {underlay && october && <image href={OCTOBER_SOURCE.image} width="1" height="1" opacity=".26" pointerEvents="none"
+            transform={`matrix(${sourceX[0] - sourceOrigin[0]},${sourceX[1] - sourceOrigin[1]},${sourceY[0] - sourceOrigin[0]},${sourceY[1] - sourceOrigin[1]},${sourceOrigin[0]},${sourceOrigin[1]})`} />}
+          {wallStart && <circle cx={wallStart[0]} cy={wallStart[1]} r={5 * unitPerPixel} fill="var(--cp-accent)" pointerEvents="none" />}
           {stair && <StairPlan geometry={stair} state={shown} selection={activeSelection} onSelect={tool === 'select' ? next => {
             svgRef.current?.focus(); select(next);
           } : undefined} onBeginMove={tool === 'select' ? begin : undefined} />}
@@ -298,7 +338,7 @@ export function CadFloorEditor({ state, onChange, onClose, historyControls }: Fl
       <div className="cad-pan-buttons" role="group" aria-label="הזזת מבט ללא גרירה">
           {([[-1, 0, 'שמאלה', '←'], [0, -1, 'למעלה', '↑'], [0, 1, 'למטה', '↓'], [1, 0, 'ימינה', '→']] as const).map(([x, y, label, glyph]) => <Button key={label} size="icon" variant="secondary" aria-label={`מבט ${label}`} onClick={() => panBy(x, y)}>{glyph}</Button>)}
       </div>
-      <div className="cad-status"><FloorHeightReadout floor={floor} building={state.buildings[unit]} units={units} /><span>גררו אובייקט להזזה · ידית עגולה לסיבוב · Shift להצמדת 15° · הצמדה {snap ? '25 ס״מ' : 'כבויה'} · תוכנית גלובלית · {stair ? `${FLOOR_NAMES[connection]} ← ${FLOOR_NAMES[stair.toFloor]}` : 'אין חיבור מדרגות פעיל'}</span></div>
+      <div className="cad-status"><FloorHeightReadout floor={floor} building={state.buildings[unit]} units={units} /><span>גררו אובייקט להזזה · ידית עגולה לסיבוב · Shift להצמדת 15° · הצמדה {snap ? '25 ס״מ' : 'כבויה'} · תוכנית גלובלית · {stair ? `${FLOOR_NAMES[connection]} ← ${LEVEL_NAMES[stair.toFloor]}` : 'אין חיבור מדרגות פעיל'}</span></div>
     </div>
     <aside className={`cad-side ${details ? 'is-expanded' : ''}`}>
       <Button className="cad-details-toggle" size="sm" variant="secondary" aria-expanded={details} aria-controls={`${patternId}-properties`} onClick={() => setDetails(v => !v)}>מאפיינים, שכבות ומדרגות</Button>
@@ -306,6 +346,9 @@ export function CadFloorEditor({ state, onChange, onClose, historyControls }: Fl
         <div className="cad-presentation"><label>יחידות תצוגה<select value={units} onChange={e => { cancel(); setUnits(e.target.value as DisplayUnit); }}><option value="m">מטרים</option><option value="mm">מילימטרים</option></select></label>
           <label className="cad-check"><input type="checkbox" checked={snap} onChange={e => { cancel(); setSnap(e.target.checked); }} />הצמדה ל־25 ס״מ</label></div>
         <fieldset className="cad-layers"><legend>שכבות</legend>{LAYERS.map(([key, label]) => <label key={key} className="cad-check"><input type="checkbox" checked={layers[key]} onChange={e => { cancel(); setLayers(previous => ({ ...previous, [key]: e.target.checked })); }} />{label}</label>)}</fieldset>
+        {imported?.image && <label className="cad-check"><input type="checkbox" checked={underlay} onChange={event => setUnderlay(event.target.checked)} />תמונת המקור המכוילת</label>}
+        {october && <label className="cad-check"><input type="checkbox" checked={underlay} onChange={event => setUnderlay(event.target.checked)} />תוכנית מקור · 8 באוקטובר</label>}
+        {tool === 'wall' && <p className="small-note" role="status">לחצו על שתי נקודות ליצירת קיר בעובי 18 ס״מ. Shift מיישר לציר. ביטול מחזיר את המצב הקודם.</p>}
         <label>בחירת אובייקט<select aria-label="בחירת אובייקט" value={activeSelection ? `${activeSelection.type}:${activeSelection.id}` : ''} onChange={e => select(visibleObjects.find(o => `${o.selection.type}:${o.selection.id}` === e.target.value)?.selection ?? null)}>
           <option value="">ללא בחירה</option>{visibleObjects.map(o => <option key={`${o.selection.type}:${o.selection.id}`} value={`${o.selection.type}:${o.selection.id}`}>{o.label}</option>)}</select></label>
         {error && <p role="alert" className="cad-error">{error}</p>}
@@ -314,9 +357,9 @@ export function CadFloorEditor({ state, onChange, onClose, historyControls }: Fl
           {tool === 'measure' && <PlanMeasurementPanel points={points} onPoints={setPoints} state={state} floor={floor} unit={unit} units={units} />}
           <details><summary>הוספת ריהוט ומכשירים</summary><FurniturePalette key={`${context}-${units}`} state={state} unit={unit} floor={floor} units={units}
             center={[bounds.x + bounds.width / 2, bounds.y + bounds.height / 2]} onCommand={command} onSelect={next => { setLayers(l => ({ ...l, furniture: true })); select(next); }} /></details>
-          <details open><summary>מדרגות — ישר או U</summary><label>חיבור מוצג<select aria-label="חיבור מדרגות" value={connection} onChange={e => { cancel(); setConnection(e.target.value as 'basement' | 'ground'); }}>
-            <option value="basement">מרתף ← קומת קרקע</option><option value="ground" disabled={state.buildings[unit].storeys !== 2}>קומת קרקע ← קומה ראשונה</option></select></label>
-            <StairControls state={state} unit={unit} fromFloor={connection} units={units} onCommand={(c, label) => safely(() => command(c, label))} /></details>
+          <details open><summary>מדרגות — ישר או U</summary>
+            <StairControls state={state} unit={unit} fromFloor={connection} units={units} onConnectionChange={next => { cancel(); setConnection(next); }}
+              onCommand={(c, label) => safely(() => command(c, label))} /></details>
           <details><summary>עזרה ואיפוס</summary><p className="small-note">גרירה היא תצוגה מקדימה מקומית. שחרור תקין שומר פעולה אחת; Escape, ביטול מצביע או שינוי מודל מבטלים אותה. גלגלת סביב הסמן; חצים ו־+/− כשהתוכנית ממוקדת. מידות מספריות בקפיצות 10 מ״מ. סמלים רעיוניים, לא תוכנית ביצוע.</p>
             <Button size="sm" variant="secondary" onClick={() => { cancel(); onChange({ ...state, openings: {}, addedOpenings: [], design: { wallEdits: {}, roomEdits: {}, furnitureEdits: {}, addedFurniture: [] } }, 'איפוס תוכנית 2D'); }}>איפוס תוכנית 2D</Button></details>
         </> : <p role="status">היחידה או הקומה אינן פעילות. בחרו קומה זמינה; אין עריכת גאומטריה נסתרת.</p>}

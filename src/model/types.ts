@@ -3,10 +3,11 @@ import type { Appearance } from './appearance';
 
 export type UnitId = 'north' | 'south';
 export type FloorId = 'basement' | 'ground' | 'first';
+export type LevelId = FloorId | 'roof';
 export type Vec2 = [number, number];
 export type OpeningKind = 'window' | 'glazing' | 'door' | 'void';
 export type StairLayout = 'straight' | 'u-shaped';
-export const FURNITURE_KINDS = ['bed', 'sofa', 'coffee-table', 'dining-table', 'chair', 'kitchen-unit', 'kitchen-island', 'armchair', 'sink', 'cooktop', 'fridge', 'dishwasher', 'toilet', 'basin', 'shower'] as const;
+export const FURNITURE_KINDS = ['bed', 'sofa', 'coffee-table', 'dining-table', 'chair', 'kitchen-unit', 'kitchen-island', 'armchair', 'sink', 'cooktop', 'fridge', 'dishwasher', 'toilet', 'basin', 'shower', 'bathtub', 'wardrobe', 'nightstand', 'bookcase', 'oven-tower', 'washer-dryer', 'tv-console', 'pendant', 'vanity', 'bench', 'desk'] as const;
 export type FurnitureKind = typeof FURNITURE_KINDS[number];
 
 /** Horizontal dimensions/centers are unscaled plan metres; height is vertical metres. */
@@ -21,6 +22,23 @@ export interface FurnitureSpec {
   depth: number;
   height: number;
   source: 'plan' | 'added';
+  layout?: 'south-family' | 'south-west' | 'north-bedrooms' | 'north-ground' | 'october-ground';
+  shape?: 'round';
+}
+
+export interface StairLandingSettings {
+  turn: 'straight' | 'left' | 'right';
+  landingAfter: number;
+  landingDepth: number;
+}
+
+export interface StairPathSettings extends StairLandingSettings {
+  width: number;
+  treadDepth: number;
+  reversed: boolean;
+  secondLanding?: StairLandingSettings;
+  rotation?: number;
+  offset?: Vec2;
 }
 
 /** An absolute placement override. Absent sizes continue to follow the seed. */
@@ -48,7 +66,9 @@ export interface BuildingSettings {
   roofFloorHeight: number;
   /** Absolute peak elevation above ground. */
   roofPeakHeight: number;
-  firstFloorVariant: 'original' | 'open-plan';
+  firstFloorVariant: 'original' | 'open-plan' | 'bedrooms';
+  northGroundLayout?: 'attached';
+  southLayout?: 'family' | 'west-stair';
   storeys: 1 | 2;
   stairLayout: StairLayout;
   /** Local plan degrees around the shared stairwell center; absent means zero. */
@@ -57,6 +77,10 @@ export interface BuildingSettings {
   stairPosition?: Vec2;
   stairScale?: number;
   stairEnabled?: boolean;
+  stairPaths?: Partial<Record<FloorId, StairPathSettings>>;
+  stairToRoof?: boolean;
+  stairRailing?: boolean;
+  stairOpeningGlass?: boolean;
 }
 
 export interface NeighborSettings {
@@ -86,6 +110,8 @@ export interface OpeningSpec {
   height: number;
   sill: number;
   open: boolean;
+  /** Which side of the host wall the hinged leaf opens towards in wall-local Z. */
+  swing?: 'positive' | 'negative';
   shutter: boolean;
   overhang: number;
   source: 'plan' | 'added';
@@ -102,7 +128,7 @@ export interface PlanWall {
   exterior: boolean;
   retaining: boolean;
   /** Concept variants are not measurements from the source PDF. */
-  provenance?: 'concept';
+  provenance?: 'concept' | 'proposal';
   /** A balcony parapet has a fixed height, not the storey's full height. */
   low?: number;
   openings: OpeningSpec[];
@@ -135,6 +161,27 @@ export interface RoomEdit {
   deleted: boolean;
 }
 
+export interface ImportedPlan {
+  unit: UnitId;
+  sourceName: string;
+  outline: Vec2[];
+  image: string | null;
+  imageWidth: number;
+  imageDepth: number;
+}
+
+export type LandscapeKind = 'potted-plant' | 'fern' | 'olive-tree' | 'cypress';
+export interface LandscapeSpec {
+  id: string;
+  kind: LandscapeKind;
+  unit: UnitId;
+  level: FloorId | 'garden';
+  center: Vec2;
+  height: number;
+  spread: number;
+  rotation: number;
+}
+
 export interface SimulationState {
   version: 1;
   /** Optional for version-1 compatibility. Images are embedded in project backups. */
@@ -158,6 +205,10 @@ export interface SimulationState {
     roomEdits: Record<string, RoomEdit>;
     furnitureEdits: Record<string, FurnitureEdit>;
     addedFurniture: FurnitureSpec[];
+    addedWalls?: PlanWall[];
+    importedPlan?: ImportedPlan;
+    groundPlan?: 'october-2026';
+    landscape?: LandscapeSpec[];
   };
   view: {
     mode: 'orbit' | 'plan' | 'walk';
@@ -206,3 +257,4 @@ export interface DailyExposure {
 
 export const UNIT_NAMES: Record<UnitId, string> = { north: 'יחידה א׳ · עורפית', south: 'יחידה ב׳ · קדמית' };
 export const FLOOR_NAMES: Record<FloorId, string> = { basement: 'מרתף', ground: 'קומת קרקע', first: 'קומה ראשונה' };
+export const LEVEL_NAMES: Record<LevelId, string> = { ...FLOOR_NAMES, roof: 'קומת גג' };

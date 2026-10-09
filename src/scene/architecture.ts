@@ -10,9 +10,14 @@ import { buildWallGeometry } from '../lib/wallGeometry';
 import { getWallApertures, resolveStairGeometry, type StairPart } from '../model/cad';
 import { rotatePlanPoint } from '../model/rotation';
 import { furnitureParts } from '../model/furnitureParts';
+import { stairOpeningEdges, stairPortals, stairRailEdges, STAIR_GLASS_HEIGHT, STAIR_RAIL_HEIGHT } from '../model/stairSafety';
+import { buildShowroomDetails } from './showroomDetails';
+import { buildLandscape } from './landscape';
+import { openingLeaves } from '../lib/doorInteraction';
+import { batchDecorations } from './batchDecorations';
 import {
-  BALCONIES, BASE_DEPTH, BASE_WIDTH, FOOTPRINTS, LIGHT_WELLS, PARTY_Z, SITE, SLAB,
-  floorElevation, planPoint, resolvedFurniture, resolvedOpenings, resolvedRooms, resolvedWalls, wallHeight,
+  BASE_DEPTH, BASE_WIDTH, FOOTPRINTS, LIGHT_WELLS, PARTY_Z, SITE, SLAB,
+  floorElevation, planPoint, resolvedFurniture, resolvedOpenings, resolvedRooms, resolvedWalls, resolvedFootprint, resolvedBalconies, wallHeight,
 } from '../model/plans';
 import type { FloorId, OpeningSpec, Room, SimulationState, UnitId, Vec2 } from '../model/types';
 
@@ -29,7 +34,7 @@ export interface Architecture {
   materials: THREE.Material[];
 }
 export type MeshMeta = { unit?: UnitId; floor?: FloorId; role?: string; blockerName?: string; openingId?: string; neighborId?: string;
-  wallId?: string; furnitureId?: string; stairId?: string; fromFloor?: 'basement' | 'ground'; toFloor?: 'ground' | 'first'; provenance?: 'concept';
+  wallId?: string; furnitureId?: string; landscapeId?: string; stairId?: string; fromFloor?: FloorId; toFloor?: FloorId | 'roof'; provenance?: 'concept' | 'proposal';
   partIndex?: number; partKind?: StairPart['kind'] };
 
 export function readPalette(): Palette {
@@ -70,7 +75,7 @@ export function roofGeometry(width: number, depth: number, rise: number) {
   return geo;
 }
 
-export function buildArchitecture(state: SimulationState, palette: Palette, assets?: RealisticAssets): Architecture {
+export function buildArchitecture(state: SimulationState, palette: Palette, assets?: RealisticAssets, showroom = false): Architecture {
   const group = new THREE.Group();
   group.name = 'Plan-registered architecture';
   group.rotation.y = -THREE.MathUtils.degToRad(state.northBearing);
@@ -117,9 +122,14 @@ export function buildArchitecture(state: SimulationState, palette: Palette, asse
     const surface = SURFACE_ASSETS.find(asset => asset.id === mat.userData.surface);
     const maps = surface && assets?.surfaces.get(surface.id);
     if (maps) {
-      mat.map = maps.color; mat.normalMap = maps.normal; mat.roughnessMap = maps.roughness;
-      mat.normalScale.setScalar(surface.strength);
+      mat.map = maps.color; mat.roughnessMap = maps.roughness;
+      if (maps.normal) { mat.normalMap = maps.normal; mat.normalScale.setScalar(surface.strength); }
+      if (maps.height) { mat.bumpMap = maps.height; mat.bumpScale = surface.strength; }
     }
+    if (showroom && (name === 'fabric' || name === 'plaster')) {
+      mat.map = null; mat.color.set(name === 'fabric' ? 0xd5c4ad : 0xf3f0e9); mat.normalScale.setScalar(name === 'fabric' ? .15 : .05);
+    }
+    if (showroom && name === 'glass') { mat.opacity = .09; mat.roughness = .06; mat.envMapIntensity = .6; }
     finishes.set(name, mat); materials.push(mat);
     return mat;
   };
@@ -192,7 +202,7 @@ export function buildArchitecture(state: SimulationState, palette: Palette, asse
   const box = (parent: THREE.Object3D, w: number, h: number, d: number, x: number, y: number, z: number, mat: THREE.Material, meta: MeshMeta, opaque = true) => {
     if (w <= 0 || h <= 0 || d <= 0) return null;
     const geometry = realistic && meta.role === 'furniture'
-      ? new RoundedBoxGeometry(w, h, d, 2, Math.min(w, h, d) * (mat.userData.finish === 'fabric' ? .22 : .07))
+    ? new RoundedBoxGeometry(w, h, d, showroom ? 4 : 2, Math.min(w, h, d) * (mat.userData.finish === 'fabric' ? (showroom ? .42 : .22) : .07))
       : new THREE.BoxGeometry(w, h, d);
     const object = mesh(parent, geometry, mat, meta, opaque);
     object.position.set(x, y + h / 2, z);
@@ -204,6 +214,7 @@ export function buildArchitecture(state: SimulationState, palette: Palette, asse
   let ground: MultiPolygon = polygon([[-55, -50], [65, -50], [65, 60], [-55, 60]]);
   for (const unit of ['north', 'south'] as UnitId[]) {
     if (!state.buildings[unit].enabled) continue;
+    if (state.design.importedPlan?.unit === unit) continue;
     // Union touching excavations BEFORE the affine transform. Repeated subtraction
     // of independently rounded shared edges can leave an unclosable output ring.
     const holes = polygonClipping.union(polygon(FOOTPRINTS.basement[unit]), ...LIGHT_WELLS[unit].map(polygon));
@@ -214,13 +225,68 @@ export function buildArchitecture(state: SimulationState, palette: Palette, asse
   earth.position.y = -.18;
 
   const surface = (ring: Vec2[], color: THREE.ColorRepresentation, y = .008, opacity = 1, grass = false) => {
-    const surf = mesh(group, slabGeometry(polygon(ring), .008), material(color, {
+    const grassMaps = grass && realistic ? assets?.surfaces.get('grass004') : undefined;
+    const surfMaterial = material(grassMaps ? 0xffffff : color, {
       transparent: opacity < 1, opacity, depthWrite: opacity === 1,
-      ...(grass && grassTexture ? { map: grassTexture, roughness: .98 } : {}),
-    }), { role: grass ? 'grass' : 'landscape' }, false);
+      ...(grassMaps ? {
+        map: grassMaps.color,
+        roughnessMap: grassMaps.roughness,
+        bumpMap: grassMaps.height,
+        bumpScale: .045,
+        roughness: .96,
+      } : grass && grassTexture ? { map: grassTexture, roughness: .98 } : {}),
+    });
+    if (grassMaps) surfMaterial.userData = { surface: 'grass004', metres: 1.4 };
+    const surf = mesh(group, slabGeometry(polygon(ring), .008), surfMaterial, { role: grass ? 'grass' : 'landscape' }, false);
     surf.position.y = y;
+    if (grass && realistic) {
+      const minX = Math.min(...ring.map(point => point[0])), maxX = Math.max(...ring.map(point => point[0]));
+      const minZ = Math.min(...ring.map(point => point[1])), maxZ = Math.max(...ring.map(point => point[1]));
+      const inside = (x: number, z: number) => {
+        let hit = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          const a = ring[i], b = ring[j];
+          if ((a[1] > z) !== (b[1] > z) && x < (b[0] - a[0]) * (z - a[1]) / (b[1] - a[1]) + a[0]) hit = !hit;
+        }
+        return hit;
+      };
+      const step = .14, transforms: THREE.Matrix4[] = [];
+      const position = new THREE.Vector3(), rotation = new THREE.Quaternion(), scale = new THREE.Vector3();
+      const bladeRotation = new THREE.Euler(), matrix = new THREE.Matrix4();
+      let index = 0;
+      for (let z = minZ + step / 2; z < maxZ; z += step) for (let x = minX + step / 2; x < maxX; x += step) {
+        const seed = Math.sin(++index * 91.345) * 43758.5453, variation = seed - Math.floor(seed);
+        const px = x + (variation - .5) * step * .72;
+        const pz = z + ((variation * 17.17) % 1 - .5) * step * .72;
+        if (!inside(px, pz)) continue;
+        position.set(px, y + .01, pz);
+        bladeRotation.set(0, variation * Math.PI * 2, (variation - .5) * .16);
+        rotation.setFromEuler(bladeRotation);
+        scale.set(.72 + variation * .55, .72 + ((variation * 7.31) % 1) * .6, 1);
+        transforms.push(matrix.compose(position, rotation, scale).clone());
+      }
+      const bladeGeometry = new THREE.BufferGeometry();
+      bladeGeometry.setAttribute('position', new THREE.Float32BufferAttribute([-.012, 0, 0, .012, 0, 0, 0, .12, 0], 3));
+      bladeGeometry.computeVertexNormals();
+      const bladeMaterial = new THREE.MeshStandardMaterial({
+        color: 0x4f7f2c,
+        roughness: 1,
+        metalness: 0,
+        side: THREE.DoubleSide,
+      });
+      bladeMaterial.clipShadows = false;
+      materials.push(bladeMaterial);
+      const blades = new THREE.InstancedMesh(bladeGeometry, bladeMaterial, transforms.length);
+      transforms.forEach((transform, blade) => blades.setMatrixAt(blade, transform));
+      blades.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+      blades.castShadow = true;
+      blades.receiveShadow = true;
+      blades.userData = { role: 'grass-blades' };
+      group.add(blades);
+    }
     return surf;
   };
+  if (!state.design.importedPlan) {
   surface([[0, -12], [9.8, -12], [9.8, -5.2], [0, -5.2]], realistic ? palette.success : mix(palette.success, palette.background, .78), .008, 1, true);
   surface([[0, 16.2], [9.3, 16.2], [9.3, 19.3], [8.4, 19.3], [8.4, 21.6], [7.5, 21.6], [7.5, 18.15], [0, 18.15]], realistic ? palette.success : mix(palette.success, palette.background, .78), .008, 1, true);
   surface([[0, -5.2], [9.8, -5.2], [9.8, -1.5], [0, -1.5]], mix(palette.border, palette.background, .65));
@@ -315,6 +381,7 @@ export function buildArchitecture(state: SimulationState, palette: Palette, asse
   };
   addPerson(8.15, 18.1, 1.75);
   addPerson(8.0, -2.7, 1.65);
+  }
 
   for (const unit of ['north', 'south'] as UnitId[]) {
     const settings = state.buildings[unit];
@@ -326,7 +393,7 @@ export function buildArchitecture(state: SimulationState, palette: Palette, asse
     house.scale.set(settings.width / BASE_WIDTH, 1, settings.depth / BASE_DEPTH[unit]);
     group.add(house);
     const localRing = (ring: Vec2[]): Vec2[] => ring.map(([x, z]) => [x, z - PARTY_Z]);
-    const floors: FloorId[] = settings.storeys === 2 ? ['basement', 'ground', 'first'] : ['basement', 'ground'];
+    const floors: FloorId[] = state.design.importedPlan?.unit === unit ? ['ground'] : settings.storeys === 2 ? ['basement', 'ground', 'first'] : ['basement', 'ground'];
     for (const floor of floors) {
       const elevation = floorElevation(floor, settings);
       const openPlanFirst = unit === 'north' && floor === 'first' && settings.firstFloorVariant === 'open-plan';
@@ -334,22 +401,27 @@ export function buildArchitecture(state: SimulationState, palette: Palette, asse
       const plaster = realistic ? finish('plaster') : material(palette.wall);
       const ceiling = material(mix(palette.surface, palette.border, .08));
       const floorMat = realistic ? finish(floor === 'first' ? 'wood' : 'tile') : material(mix(palette.background, palette.border, .17));
-      const frameMat = realistic ? finish('metal') : material(mix(palette.text, palette.muted, .3), { roughness: .5, metalness: .3 });
+      const frameMat = realistic ? finish(showroom ? 'dark' : 'metal') : material(mix(palette.text, palette.muted, .3), { roughness: .5, metalness: .3 });
       const glassMat = realistic ? finish('glass') : material(mix(palette.surface, palette.link, .17), { transparent: true, opacity: .16, depthWrite: false, roughness: .15, metalness: .06 });
-      let floorShape: MultiPolygon = polygon(localRing(FOOTPRINTS[floor][unit]));
-      if (floor === 'first' && !openPlanFirst) floorShape = polygonClipping.union(floorShape, ...BALCONIES[unit].map(r => polygon(localRing(r))));
+      let floorShape: MultiPolygon = polygon(localRing(resolvedFootprint(floor, unit, state)));
+      if (floor === 'first' && !openPlanFirst) floorShape = polygonClipping.union(floorShape, ...resolvedBalconies(unit, state).map(r => polygon(localRing(r))));
       const incomingStair = floor === 'basement' ? null : resolveStairGeometry(state, unit, floor === 'ground' ? 'basement' : 'ground');
       if (incomingStair) floorShape = polygonClipping.difference(floorShape, polygon(localRing(incomingStair.footprint)));
       const slab = mesh(house, slabGeometry(floorShape, SLAB), floorMat, { ...meta, role: 'slab', blockerName: 'תקרת/רצפת בטון' });
       slab.position.y = elevation - SLAB;
       slabSurfaces(slab, unit, floor, floor === 'first' ? 'ground' : floor === 'ground' ? 'basement' : null);
+      if (showroom && floor === 'ground' && unit === 'south' && !state.design.importedPlan) {
+        const porch = mesh(house, slabGeometry(polygon(localRing([[9.49, 9.3], [11.85, 9.3], [11.85, 12.5], [9.49, 12.5]])), SLAB),
+          realistic ? finish('tile') : floorMat, { unit, floor, role: 'entry-porch', blockerName: 'רצפת המבואה המקורה' }, true);
+        porch.position.y = -SLAB;
+      }
 
       if (floor === 'first' && !openPlanFirst) {
         const balconyGlass = material(mix(palette.surface, palette.link, .14), {
           transparent: true, opacity: .28, depthWrite: false, roughness: .12, metalness: .06,
         });
         const railHeight = 1.05;
-        for (const balcony of BALCONIES[unit]) {
+        for (const balcony of resolvedBalconies(unit, state)) {
           const ring = localRing(balcony);
           for (let index = 0; index < ring.length; index++) {
             const a = ring[index], b = ring[(index + 1) % ring.length];
@@ -369,6 +441,21 @@ export function buildArchitecture(state: SimulationState, palette: Palette, asse
         for (const well of LIGHT_WELLS[unit]) {
           const floorMesh = mesh(house, slabGeometry(polygon(localRing(well)), .12), floorMat, { ...meta, role: 'well', blockerName: 'רצפת חצר אנגלית' });
           floorMesh.position.y = elevation - .12;
+          if (showroom) {
+            const grateMat = material(0x818787, { roughness: .58, metalness: .7, transparent: true, opacity: .42 });
+            const grate = mesh(house, slabGeometry(polygon(localRing(well)), .035), grateMat,
+              { unit, floor: 'ground', role: 'well-grate', blockerName: 'שבכת חצר אנגלית נושאת' }, false);
+            grate.position.y = -.035;
+            const xs = well.map(p => p[0]), zs = well.map(p => p[1]);
+            const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs);
+            const bars = material(0x666f6d, { roughness: .5, metalness: .7 });
+            const count = Math.ceil((x1 - x0) / .08);
+            const rails = new THREE.InstancedMesh(new THREE.BoxGeometry(.012, .012, z1 - z0), bars, count);
+            const matrix = new THREE.Matrix4();
+            for (let index = 0; index < count; index++) rails.setMatrixAt(index, matrix.makeTranslation(x0 + index * .08, -.006, (z0 + z1) / 2 - PARTY_Z));
+            rails.userData = { unit, floor: 'ground', role: 'grate-detail' };
+            rails.receiveShadow = true; house.add(rails);
+          }
         }
       }
 
@@ -381,9 +468,20 @@ export function buildArchitecture(state: SimulationState, palette: Palette, asse
         box(wallGroup, frame, height, thick + .03, center - width / 2 + frame / 2, sill, 0, frameMat, data);
         box(wallGroup, frame, height, thick + .03, center + width / 2 - frame / 2, sill, 0, frameMat, data);
         box(wallGroup, width, frame, thick + .03, center, sill + height - frame, 0, frameMat, data);
-        if (opening.kind !== 'door' && opening.kind !== 'void') box(wallGroup, width, frame, thick + .03, center, sill, 0, frameMat, data);
+        if (opening.kind !== 'door' && opening.kind !== 'void') box(wallGroup, width, frame, thick + .03, center, showroom && sill < .15 ? -frame : sill, 0, frameMat, data);
         const isOpaque = opening.shutter || (opening.kind === 'door' && !opening.open);
-        if (isOpaque) {
+        if (showroom && (opening.kind === 'door' || opening.kind === 'glazing')) {
+          for (const leaf of openingLeaves(opening, { id: opening.id, center, width, sill, height })) {
+            const mat = leaf.glass ? glassMat : finish(opening.shutter ? 'dark' : 'wood');
+            const panel = box(wallGroup, leaf.width, leaf.height, leaf.depth, leaf.x, leaf.bottom, leaf.z, mat,
+              { ...data, role: 'opening-leaf', blockerName: leaf.glass ? 'זיגוג סגור' : 'כנף דלת' }, !leaf.glass);
+            if (panel) panel.rotation.y = leaf.rotation;
+            if (opening.kind === 'door') {
+              const leafGroup = new THREE.Group(); leafGroup.position.set(leaf.x, leaf.bottom, leaf.z); leafGroup.rotation.y = leaf.rotation; wallGroup.add(leafGroup);
+              for (const z of [-.04, .04]) box(leafGroup, .14, .026, .045, leaf.width * .34, Math.min(1.02, leaf.height * .5), z, finish('metal'), { ...data, role: 'door-handle' }, false);
+            }
+          }
+        } else if (isOpaque) {
           const opaqueMat = realistic ? finish(opening.shutter ? 'metal' : 'wood') : material(mix(palette.muted, palette.background, .24));
           box(wallGroup, width - frame * 2, height - frame, .06, center, sill, 0, opaqueMat, data, true);
           if (realistic && opening.kind === 'door' && !opening.shutter) {
@@ -429,13 +527,35 @@ export function buildArchitecture(state: SimulationState, palette: Palette, asse
         if (balconyRail) { balconyRail.rotation.y = Math.PI / 2; balconyRail.castShadow = true; }
       }
 
-      const stair = floor === 'first' ? null : resolveStairGeometry(state, unit, floor);
+      const stair = resolveStairGeometry(state, unit, floor);
       if (stair) {
         const stepMat = realistic ? finish('stone') : material(mix(palette.border, palette.background, .35));
         for (const [partIndex, part] of stair.parts.entries()) {
           const tread = box(house, part.width, part.height, part.depth, part.center[0], part.bottom, part.center[1] - PARTY_Z, stepMat,
             { ...meta, role: 'stair', stairId: `stair-${unit}-${stair.fromFloor}`, fromFloor: stair.fromFloor, toFloor: stair.toFloor, partIndex, partKind: part.kind, blockerName: part.kind === 'landing' ? 'פודסט מדרגות' : 'מדרגות' });
           if (tread) tread.rotation.y = -THREE.MathUtils.degToRad(part.rotation ?? 0);
+        }
+        if (settings.stairRailing ?? settings.southLayout === 'family') {
+          const railMat = realistic ? finish('dark') : frameMat;
+          for (const edge of stairRailEdges(stair)) {
+            const start = new THREE.Vector3(edge.a[0], edge.elevationA + STAIR_RAIL_HEIGHT, edge.a[1] - PARTY_Z);
+            const end = new THREE.Vector3(edge.b[0], edge.elevationB + STAIR_RAIL_HEIGHT, edge.b[1] - PARTY_Z);
+            const direction = end.clone().sub(start);
+            const rail = mesh(house, new THREE.CylinderGeometry(.018, .018, direction.length(), 8), railMat,
+              { ...meta, role: 'stair-guard', stairId: `stair-${unit}-${floor}` }, true);
+            rail.position.copy(start).add(end).multiplyScalar(.5);
+            rail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+            box(house, .025, STAIR_RAIL_HEIGHT, .025, edge.a[0], edge.elevationA, edge.a[1] - PARTY_Z, railMat,
+              { ...meta, role: 'stair-guard', stairId: `stair-${unit}-${floor}` }, true);
+          }
+        }
+      }
+      if (incomingStair && settings.stairOpeningGlass) {
+        for (const edge of stairOpeningEdges(incomingStair, stair)) {
+          const dx = edge.b[0] - edge.a[0], dz = edge.b[1] - edge.a[1];
+          const glass = box(house, Math.hypot(dx, dz), STAIR_GLASS_HEIGHT, .016, (edge.a[0] + edge.b[0]) / 2,
+            elevation, (edge.a[1] + edge.b[1]) / 2 - PARTY_Z, glassMat, { ...meta, role: 'stair-opening-glass' }, false);
+          if (glass) glass.rotation.y = -Math.atan2(dz, dx);
         }
       }
 
@@ -470,12 +590,13 @@ export function buildArchitecture(state: SimulationState, palette: Palette, asse
           furniture.add(model);
           continue;
         }
+        const pickStart = pickables.length, measureStart = measurementTargets.length;
         const tones = realistic ? {
           body: finish(furnitureFinish(item.kind, 'body')), detail: finish(furnitureFinish(item.kind, 'detail')),
           surface: finish(furnitureFinish(item.kind, 'surface')), glass: finish('glass'),
         } : { body: material(mix(palette.surface, palette.border, .27)), detail: material(mix(palette.background, palette.muted, .20)),
           surface: material(palette.surface), glass: glassMat };
-        for (const part of furnitureParts(item)) {
+        for (const part of furnitureParts(item, showroom)) {
           if (part.shape === 'box') {
             box(furniture, part.width, part.height, part.depth, part.center[0], part.bottom, part.center[1], tones[part.tone], furnitureMeta, false);
           } else {
@@ -484,12 +605,17 @@ export function buildArchitecture(state: SimulationState, palette: Palette, asse
             cylinder.position.set(part.center[0], part.bottom + part.height / 2, part.center[1]);
           }
         }
+        if (showroom) {
+          const batched = batchDecorations(furniture, { ...furnitureMeta, opaque: false });
+          pickables.splice(pickStart, pickables.length - pickStart, ...batched);
+          measurementTargets.splice(measureStart, measurementTargets.length - measureStart, ...batched);
+        }
       }
     }
 
     const roofFloor = settings.storeys === 2 ? 'first' : 'ground';
-    let roofShape = polygon(localRing(FOOTPRINTS[roofFloor][unit]));
-    if (settings.storeys === 2) roofShape = polygonClipping.difference(roofShape, ...BALCONIES[unit].map(ring => polygon(localRing(ring))));
+    let roofShape = polygon(localRing(resolvedFootprint(roofFloor, unit, state)));
+    if (settings.storeys === 2) roofShape = polygonClipping.difference(roofShape, ...resolvedBalconies(unit, state).map(ring => polygon(localRing(ring))));
     const roofBase = settings.groundHeight + (settings.storeys === 2 ? settings.upperHeight : 0);
     const roofColor = mix(palette.surface, palette.border, .20);
     const roofMat = material(roofColor, {
@@ -509,12 +635,16 @@ export function buildArchitecture(state: SimulationState, palette: Palette, asse
       const terraceSouth: Vec2[] | null = unit === 'south'
         ? [[0, 13.05], [11.8, 13.05], [11.8, 16.12], [0, 16.12]]
         : null;
-      const roofSlab = mesh(roofGroup, slabGeometry(polygon(localRing(FOOTPRINTS.first[unit])), SLAB), roofMat,
+      const roofStair = resolveStairGeometry(state, unit, 'first');
+      let roofFloorShape = polygon(localRing(resolvedFootprint('first', unit, state)));
+      if (roofStair) roofFloorShape = polygonClipping.difference(roofFloorShape, polygon(localRing(roofStair.footprint)));
+      const roofSlab = mesh(roofGroup, slabGeometry(roofFloorShape, SLAB), roofMat,
         { unit, floor: 'first', role: 'roof-floor-slab', blockerName: 'רצפת קומת גג' }, true, true);
       roofSlab.position.y = roofBase - SLAB;
       slabSurfaces(roofSlab, unit, 'roof', roofFloor);
       for (const terrace of [terraceNorth, terraceEast, ...(terraceSouth ? [terraceSouth] : [])]) {
-        const deck = mesh(roofGroup, slabGeometry(polygon(localRing(terrace)), .035), terraceMat,
+        const terraceShape = roofStair ? polygonClipping.difference(polygon(localRing(terrace)), polygon(localRing(roofStair.footprint))) : polygon(localRing(terrace));
+        const deck = mesh(roofGroup, slabGeometry(terraceShape, .035), terraceMat,
           { unit, floor: 'first', role: 'roof-terrace' }, false);
         deck.position.y = roofBase + .01;
         slabSurfaces(deck, unit, 'roof', null);
@@ -546,12 +676,20 @@ export function buildArchitecture(state: SimulationState, palette: Palette, asse
       const roomHeight = settings.roofFloorHeight - SLAB;
       const roofRoomMeta = { unit, floor: 'first' as FloorId, role: 'roof-room', blockerName: 'קירות קומת הגג' };
       const wallThickness = .18;
+      const clearance = roofStair && polygon(localRing(roofStair.footprint));
+      const roofWall = (w: number, d: number, x: number, z: number, mat: THREE.Material) => {
+        let footprint = polygon([[x - w / 2, z - d / 2], [x + w / 2, z - d / 2], [x + w / 2, z + d / 2], [x - w / 2, z + d / 2]]);
+        if (clearance) footprint = polygonClipping.difference(footprint, clearance);
+        if (!footprint.length) return;
+        const wall = mesh(roofGroup, slabGeometry(footprint, roomHeight), mat, roofRoomMeta, true);
+        wall.position.y = roofBase;
+      };
       const northGap = Math.min(2.25, width * .29);
       const eastGap = Math.min(2.4, depth * .42);
       // Perimeter walls with genuine north/east glazing gaps, rather than solid
       // room boxes, so the suite and office remain navigable in 3D.
-      box(roofGroup, wallThickness, roomHeight, depth, x0, roofBase, z0 + depth / 2, suiteMat, roofRoomMeta, true);
-      box(roofGroup, width, roomHeight, wallThickness, x0 + width / 2, roofBase, z1, suiteMat, roofRoomMeta, true);
+      roofWall(wallThickness, depth, x0, z0 + depth / 2, suiteMat);
+      roofWall(width, wallThickness, x0 + width / 2, z1, suiteMat);
       const northPier = (width - 2 * northGap) / 3;
       for (let index = 0; index < 3; index++) {
         box(roofGroup, northPier, roomHeight, wallThickness,
@@ -563,13 +701,19 @@ export function buildArchitecture(state: SimulationState, palette: Palette, asse
       box(roofGroup, wallThickness, roomHeight, (depth - eastGap) / 2,
         x1, roofBase, z1 - (depth - eastGap) / 4, officeMat, roofRoomMeta, true);
       const dividerX = x0 + width * .62;
-      box(roofGroup, wallThickness, roomHeight, depth - 1.05, dividerX, roofBase, z0 + (depth - 1.05) / 2,
+      if (roofStair) {
+        const exit = stairPortals(roofStair).exit.center[1];
+        const center = Math.max(z0 + .8, Math.min(z1 - .8, exit - PARTY_Z));
+        if (center - .8 > z0) roofWall(wallThickness, center - .8 - z0, dividerX, (z0 + center - .8) / 2, officeMat);
+        if (center + .8 < z1) roofWall(wallThickness, z1 - center - .8, dividerX, (z1 + center + .8) / 2, officeMat);
+      } else box(roofGroup, wallThickness, roomHeight, depth - 1.05, dividerX, roofBase, z0 + (depth - 1.05) / 2,
         officeMat, { ...roofRoomMeta, blockerName: 'מחיצה בין סוויטת ההורים למשרד' }, true);
-      const suiteFloor = mesh(roofGroup, slabGeometry(polygon([[x0, z0], [dividerX, z0], [dividerX, z1], [x0, z1]]), .025), suiteMat,
+      const roofFinish = (ring: Vec2[]) => clearance ? polygonClipping.difference(polygon(ring), clearance) : polygon(ring);
+      const suiteFloor = mesh(roofGroup, slabGeometry(roofFinish([[x0, z0], [dividerX, z0], [dividerX, z1], [x0, z1]]), .025), suiteMat,
         { unit, floor: 'first', role: 'roof-suite' }, false);
       suiteFloor.position.y = roofBase + .015;
       slabSurfaces(suiteFloor, unit, 'roof', null);
-      const officeFloor = mesh(roofGroup, slabGeometry(polygon([[dividerX, z0], [x1, z0], [x1, z1], [dividerX, z1]]), .025), officeMat,
+      const officeFloor = mesh(roofGroup, slabGeometry(roofFinish([[dividerX, z0], [x1, z0], [x1, z1], [dividerX, z1]]), .025), officeMat,
         { unit, floor: 'first', role: 'roof-office' }, false);
       officeFloor.position.y = roofBase + .015;
       slabSurfaces(officeFloor, unit, 'roof', null);
@@ -628,6 +772,19 @@ export function buildArchitecture(state: SimulationState, palette: Palette, asse
     }
   }
 
+  if (showroom && realistic) {
+    const details = buildShowroomDetails(state, assets);
+    group.add(details.group); materials.push(...details.materials);
+    group.traverse(object => {
+      if (['outline', 'site-border', 'person'].includes(object.userData.role)) object.visible = false;
+    });
+  }
+  if (showroom || state.design.landscape) {
+    const landscape = buildLandscape(state, assets);
+    group.add(landscape.group); materials.push(...landscape.materials);
+    pickables.push(...landscape.pickables); measurementTargets.push(...landscape.pickables);
+  }
+  if (showroom) batchDecorations(group, undefined, true);
   group.updateMatrixWorld(true);
   return { group, blockers, pickables, measurementTargets, materials };
 }
@@ -648,6 +805,7 @@ export function roomSamplePoints(room: Room, state: SimulationState): THREE.Vect
 export function directExposure(points: THREE.Vector3[], direction: THREE.Vector3, blockers: THREE.Mesh[], aboveHorizon: boolean) {
   if (!aboveHorizon) return { lit: 0, total: points.length, cause: 'השמש מתחת לאופק', statuses: points.map(() => false) };
   const ray = new THREE.Raycaster(undefined, undefined, .006, 500);
+  ray.layers.enable(1);
   const causes = new Map<string, number>();
   const statuses = points.map(point => {
     ray.set(point, direction);
@@ -665,6 +823,7 @@ export function directExposure(points: THREE.Vector3[], direction: THREE.Vector3
 export function disposeArchitecture(architecture: Architecture) {
   const geometries = new Set<THREE.BufferGeometry>();
   architecture.group.traverse(object => {
+    if (object instanceof THREE.InstancedMesh) object.dispose();
     if (object instanceof THREE.Mesh || object instanceof THREE.Line) geometries.add(object.geometry);
   });
   disposeResources(geometries, architecture.materials);

@@ -2,20 +2,20 @@ import { resolveStairGeometry, type CadCommand } from '../model/cad';
 import { number } from '../model/cadValidation';
 import { resolvedFurniture, resolvedOpenings, resolvedRooms, resolvedWalls } from '../model/plans';
 import { normalizeRotation, rotatePlanPoint } from '../model/rotation';
-import type { SimulationState, UnitId, Vec2 } from '../model/types';
+import type { FloorId, SimulationState, UnitId, Vec2 } from '../model/types';
 import type { CadSelection } from './cadEditor';
 
 export interface RotationInfo { angle: number; pivot: Vec2; unit: UnitId; note: string }
-export function stairSelection(selection: CadSelection): { unit: UnitId; fromFloor: 'basement' | 'ground' } | null {
-  const match = selection.type === 'stair' ? /^stair-(north|south)-(basement|ground)$/.exec(selection.id) : null;
-  return match ? { unit: match[1] as UnitId, fromFloor: match[2] as 'basement' | 'ground' } : null;
+export function stairSelection(selection: CadSelection): { unit: UnitId; fromFloor: FloorId } | null {
+  const match = selection.type === 'stair' ? /^stair-(north|south)-(basement|ground|first)$/.exec(selection.id) : null;
+  return match ? { unit: match[1] as UnitId, fromFloor: match[2] as FloorId } : null;
 }
 
 export function rotationInfo(state: SimulationState, selection: CadSelection): RotationInfo | null {
   const stair = stairSelection(selection);
   if (stair) {
     const geometry = resolveStairGeometry(state, stair.unit, stair.fromFloor);
-    return geometry ? { angle: geometry.rotation, pivot: geometry.pivot, unit: stair.unit, note: 'גררו את המדרגות להזזה ואת הידית העגולה לסיבוב. שני החיבורים ופתחי הרצפות ביחידה משתנים יחד.' } : null;
+    return geometry ? { angle: geometry.rotation, pivot: geometry.pivot, unit: stair.unit, note: 'גררו את המדרגות להזזה ואת הידית העגולה לסיבוב. כל החיבורים ופתחי הרצפות ביחידה משתנים יחד.' } : null;
   }
   if (selection.type === 'furniture' || selection.type === 'room') {
     const item = selection.type === 'furniture' ? resolvedFurniture(state).find(i => i.id === selection.id)
